@@ -1,5 +1,7 @@
 # Fair Arbiter (iSLIP crossbar scheduler)
 
+[中文文档](README.zh-CN.md) · [Scheme diagram](diagram/fair_arbiter_scheme.svg) · [Algorithm animation](diagram/fair_arbiter_animation.svg)
+
 A parameterizable N-to-M fair arbiter: every cycle it produces an orthogonal
 (one-to-one) matching between N sources and M destinations, with round-robin
 fairness on both sides, zero-latency (same-cycle) grant, and source/destination

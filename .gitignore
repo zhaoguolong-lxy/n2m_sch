@@ -1,0 +1,14 @@
+# ---- build / simulation artifacts (generated) ----
+sim/*.vvp
+sim/*.log
+synth/*.log
+synth/*.v
+
+# ---- internal working notes (not deliverables) ----
+docs/superpowers/
+
+# ---- generic ----
+*.o
+*.out
+*.tmp
+.DS_Store

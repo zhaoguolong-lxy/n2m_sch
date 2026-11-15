@@ -1,0 +1,59 @@
+# synth.ys - Yosys synthesis + PPA report for fair_arbiter
+#
+# Synthesizes the arbiter for several configurations and prints cell/area
+# statistics for each.  No standard-cell liberty file is assumed, so "area" is
+# reported as the count of gate-level cells after ABC technology mapping to
+# Yosys's generic gate library.
+#
+# Usage: yosys -s synth.ys
+
+# ---------------------------------------------------------------------------
+# ITER sweep (8x8, no-reset): shows the area cost of extra matching iterations.
+# ---------------------------------------------------------------------------
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set ITER 1 fair_arbiter
+synth -top fair_arbiter
+stat
+
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set ITER 2 fair_arbiter
+synth -top fair_arbiter
+stat
+
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set ITER 3 fair_arbiter
+synth -top fair_arbiter
+stat
+
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set ITER 4 fair_arbiter
+synth -top fair_arbiter
+stat
+
+# ---------------------------------------------------------------------------
+# Reset vs no-reset (8x8, ITER=2)
+# ---------------------------------------------------------------------------
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set PTR_RESET 1 fair_arbiter
+synth -top fair_arbiter
+stat
+write_verilog -noattr synth/fair_arbiter_8x8_iter2_rst.v
+
+# ---------------------------------------------------------------------------
+# Scaling: 16x16 ITER=1, and 8x4 ITER=2
+# ---------------------------------------------------------------------------
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set N 16 -set M 16 -set ITER 1 fair_arbiter
+synth -top fair_arbiter
+stat
+
+design -reset
+read_verilog -sv rtl/fair_arbiter.v
+chparam -set N 8 -set M 4 -set ITER 2 fair_arbiter
+synth -top fair_arbiter
+stat

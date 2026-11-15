@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 700" font-family="'JetBrains Mono','Noto Sans SC','PingFang SC',monospace">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap');
+    text { font-family: 'JetBrains Mono','Noto Sans SC','PingFang SC',monospace; }
+    .ttl { font-size:18px; font-weight:700; fill:#e2e8f0; }
+    .sub { font-size:10px; fill:#64748b; }
+    .src { font-size:13px; font-weight:700; fill:#fff; }
+    .ptr { font-size:11px; font-weight:600; fill:#a78bfa; }
+    .cap { font-size:14px; font-weight:600; fill:#e2e8f0; opacity:0; }
+    .capd{ font-size:11px; fill:#94a3b8; opacity:0; }
+    .hdr { font-size:11px; font-weight:600; fill:#22d3ee; }
+    .tag { font-size:10px; font-weight:700; fill:#fbbf24; }
+
+    /* ---------- cell states (18s loop) ---------- */
+    /* G1: (0,0) request -> grant -> match */
+    .c00 { animation: g1 18s infinite; }
+    @keyframes g1 {
+      0%,5%   { fill:#1e293b; }
+      6%,14%  { fill:#155e75; }
+      15%,27% { fill:#a16207; }
+      28%,30% { fill:#2563eb; }
+      31%,100%{ fill:#047857; }
+    }
+    /* G2: (0,1),(0,2) request -> grant -> lost */
+    .c01,.c02 { animation: g2 18s infinite; }
+    @keyframes g2 {
+      0%,5%   { fill:#1e293b; }
+      6%,14%  { fill:#155e75; }
+      15%,27% { fill:#a16207; }
+      28%,100%{ fill:#0b1220; }
+    }
+    /* G3: (1,0),(2,0) request -> gray (col0 matched) */
+    .c10,.c20 { animation: g3 18s infinite; }
+    @keyframes g3 {
+      0%,5%   { fill:#1e293b; }
+      6%,44%  { fill:#155e75; }
+      45%,100%{ fill:#0b1220; }
+    }
+    /* G4: (1,1) request -> grant2 -> match */
+    .c11 { animation: g4 18s infinite; }
+    @keyframes g4 {
+      0%,5%   { fill:#1e293b; }
+      6%,44%  { fill:#155e75; }
+      45%,57% { fill:#a16207; }
+      58%,60% { fill:#2563eb; }
+      61%,100%{ fill:#047857; }
+    }
+    /* G5: (1,2) request -> grant2 -> lost */
+    .c12 { animation: g5 18s infinite; }
+    @keyframes g5 {
+      0%,5%   { fill:#1e293b; }
+      6%,44%  { fill:#155e75; }
+      45%,57% { fill:#a16207; }
+      58%,100%{ fill:#0b1220; }
+    }
+    /* G6: (2,1),(2,2) request -> never granted -> dim */
+    .c21,.c22 { animation: g6 18s infinite; }
+    @keyframes g6 {
+      0%,5%   { fill:#1e293b; }
+      6%,57%  { fill:#155e75; }
+      58%,100%{ fill:#0b1220; }
+    }
+
+    /* ---------- captions ---------- */
+    .k1 { animation: c1 18s infinite; }
+    @keyframes c1 { 0%,4%{opacity:0} 5%,11%{opacity:1} 12%,100%{opacity:0} }
+    .k2 { animation: c2 18s infinite; }
+    @keyframes c2 { 0%,13%{opacity:0} 14%,23%{opacity:1} 24%,100%{opacity:0} }
+    .k3 { animation: c3 18s infinite; }
+    @keyframes c3 { 0%,25%{opacity:0} 26%,29%{opacity:1} 30%,100%{opacity:0} }
+    .k4 { animation: c4 18s infinite; }
+    @keyframes c4 { 0%,30%{opacity:0} 31%,40%{opacity:1} 41%,100%{opacity:0} }
+    .k5 { animation: c5 18s infinite; }
+    @keyframes c5 { 0%,41%{opacity:0} 42%,48%{opacity:1} 49%,100%{opacity:0} }
+    .k6 { animation: c6 18s infinite; }
+    @keyframes c6 { 0%,49%{opacity:0} 50%,56%{opacity:1} 57%,100%{opacity:0} }
+    .k7 { animation: c7 18s infinite; }
+    @keyframes c7 { 0%,57%{opacity:0} 58%,64%{opacity:1} 65%,100%{opacity:0} }
+    .k8 { animation: c8 18s infinite; }
+    @keyframes c8 { 0%,65%{opacity:0} 66%,78%{opacity:1} 79%,100%{opacity:0} }
+    .k9 { animation: c9 18s infinite; }
+    @keyframes c9 { 0%,79%{opacity:0} 80%,90%{opacity:1} 91%,100%{opacity:0} }
+    .k10 { animation: c10 18s infinite; }
+    @keyframes c10 { 0%,91%{opacity:0} 92%,100%{opacity:1} }
+
+    /* highlight rings (grant arrows, unmatched markers) */
+    .hg1 { animation: hg1 18s infinite; }
+    @keyframes hg1 { 0%,14%{opacity:0} 15%,27%{opacity:1} 28%,100%{opacity:0} }
+    .hg2 { animation: hg2 18s infinite; }
+    @keyframes hg2 { 0%,49%{opacity:0} 50%,57%{opacity:1} 58%,100%{opacity:0} }
+    .um  { animation: um 18s infinite; }
+    @keyframes um { 0%,41%{opacity:0} 42%,57%{opacity:1} 58%,100%{opacity:0} }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arw" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,9 3,0 6" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- title -->
+  <text x="30" y="36" class="ttl">公平仲裁器 · iSLIP 匹配过程演示（3×3 满交叉，ITER=2，指针初值 0）</text>
+  <text x="30" y="52" class="sub">request → grant → accept → match，全部组合逻辑，一拍内出结果</text>
+  <text x="870" y="36" class="tag" text-anchor="middle">零延迟</text>
+
+  <!-- destinations (top) -->
+  <g>
+    <rect x="323" y="66" width="84" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="365" y="94" class="src" text-anchor="middle">D0</text>
+    <rect x="413" y="66" width="84" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="455" y="94" class="src" text-anchor="middle">D1</text>
+    <rect x="503" y="66" width="84" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="545" y="94" class="src" text-anchor="middle">D2</text>
+    <!-- grant pointers -->
+    <text x="365" y="128" class="ptr" text-anchor="middle">g_ptr=0</text>
+    <text x="455" y="128" class="ptr" text-anchor="middle">g_ptr=0</text>
+    <text x="545" y="128" class="ptr" text-anchor="middle">g_ptr=0</text>
+  </g>
+
+  <!-- sources (left) -->
+  <g>
+    <rect x="30" y="172" width="90" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="130" y="200" class="src" text-anchor="middle">S0</text>
+    <rect x="30" y="262" width="90" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="130" y="290" class="src" text-anchor="middle">S1</text>
+    <rect x="30" y="352" width="90" height="46" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="130" y="380" class="src" text-anchor="middle">S2</text>
+    <!-- accept pointers -->
+    <text x="180" y="200" class="ptr" text-anchor="start">a_ptr=0</text>
+    <text x="180" y="290" class="ptr" text-anchor="start">a_ptr=0</text>
+    <text x="180" y="380" class="ptr" text-anchor="start">a_ptr=0</text>
+  </g>
+
+  <!-- connection lines -->
+  <g stroke="#334155" stroke-width="1.2">
+    <line x1="120" y1="195" x2="316" y2="195"/>
+    <line x1="120" y1="285" x2="316" y2="285"/>
+    <line x1="120" y1="375" x2="316" y2="375"/>
+    <line x1="365" y1="112" x2="365" y2="146"/>
+    <line x1="455" y1="112" x2="455" y2="146"/>
+    <line x1="545" y1="112" x2="545" y2="146"/>
+  </g>
+
+  <!-- matrix: 3x3 cells, cell(i,j) at (320+90j, 150+90i) -->
+  <g stroke="#22d3ee" stroke-width="1">
+    <rect class="c00" x="320" y="150" width="90" height="90" rx="4"/>
+    <rect class="c01" x="410" y="150" width="90" height="90" rx="4"/>
+    <rect class="c02" x="500" y="150" width="90" height="90" rx="4"/>
+    <rect class="c10" x="320" y="240" width="90" height="90" rx="4"/>
+    <rect class="c11" x="410" y="240" width="90" height="90" rx="4"/>
+    <rect class="c12" x="500" y="240" width="90" height="90" rx="4"/>
+    <rect class="c20" x="320" y="330" width="90" height="90" rx="4"/>
+    <rect class="c21" x="410" y="330" width="90" height="90" rx="4"/>
+    <rect class="c22" x="500" y="330" width="90" height="90" rx="4"/>
+  </g>
+  <!-- cell labels -->
+  <g fill="#cbd5e1" font-size="9" text-anchor="middle">
+    <text x="365" y="186">S0→D0</text><text x="455" y="186">S0→D1</text><text x="545" y="186">S0→D2</text>
+    <text x="365" y="276">S1→D0</text><text x="455" y="276">S1→D1</text><text x="545" y="276">S1→D2</text>
+    <text x="365" y="366">S2→D0</text><text x="455" y="366">S2→D1</text><text x="545" y="366">S2→D2</text>
+  </g>
+
+  <!-- grant highlight ring (pass1: row0) -->
+  <g class="hg1">
+    <rect x="320" y="150" width="270" height="90" rx="4" fill="none" stroke="#fbbf24" stroke-width="3"/>
+    <text x="455" y="143" fill="#fbbf24" font-size="10" font-weight="700" text-anchor="middle">Grant 第1轮: D0/D1/D2 都选中 S0</text>
+  </g>
+  <!-- grant highlight ring (pass2: row1) -->
+  <g class="hg2">
+    <rect x="320" y="240" width="270" height="90" rx="4" fill="none" stroke="#fbbf24" stroke-width="3"/>
+    <text x="455" y="233" fill="#fbbf24" font-size="10" font-weight="700" text-anchor="middle">Grant 第2轮: D1/D2 选中 S1</text>
+  </g>
+  <!-- unmatched markers (ITER=2) -->
+  <g class="um">
+    <rect x="30" y="262" width="90" height="46" rx="6" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="4,3"/>
+    <rect x="30" y="352" width="90" height="46" rx="6" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="4,3"/>
+    <rect x="413" y="66" width="84" height="46" rx="6" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="4,3"/>
+    <rect x="503" y="66" width="84" height="46" rx="6" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="4,3"/>
+    <text x="455" y="56" fill="#fb7185" font-size="10" font-weight="700" text-anchor="middle">未匹配: S1,S2 / D1,D2</text>
+  </g>
+
+  <!-- match result annotation -->
+  <g class="k8">
+    <rect x="320" y="150" width="90" height="90" rx="4" fill="none" stroke="#34d399" stroke-width="3"/>
+    <rect x="410" y="240" width="90" height="90" rx="4" fill="none" stroke="#34d399" stroke-width="3"/>
+  </g>
+
+  <!-- captions -->
+  <g>
+    <text x="30" y="520" class="cap k1">① 请求：满交叉 —— 9 个源→目的请求全部有效</text>
+    <text x="30" y="520" class="cap k2">② Grant 第 1 轮：每个目的按 g_ptr=0 轮询 → 都选中最低源 S0（"热点源"）</text>
+    <text x="30" y="520" class="cap k3">③ Accept 第 1 轮：S0 按 a_ptr=0 接受 D0（仅一个）</text>
+    <text x="30" y="520" class="cap k4">④ 匹配 (S0,D0)。其余 grant 落空 —— 正交：每源/每目的至多 1 个匹配</text>
+    <text x="30" y="520" class="cap k5">⑤ ITER=2：只有未匹配的源 S1,S2 和目的 D1,D2 继续参与</text>
+    <text x="30" y="520" class="cap k6">⑥ Grant 第 2 轮：D1、D2 选中 S1</text>
+    <text x="30" y="520" class="cap k7">⑦ Accept 第 2 轮：S1 接受 D1</text>
+    <text x="30" y="520" class="cap k8">⑧ 结果：(S0,D0)+(S1,D1)=2 个匹配。ITER=1 只有 1 个，多轮迭代提升匹配质量</text>
+    <text x="30" y="520" class="cap k9">⑨ 指针推进：g_ptr[0]→1、a_ptr[0]→1、a_ptr[1]→1（仅"首轮匹配"才推进）</text>
+    <text x="30" y="520" class="cap k10">⑩ 下拍对角线右移 → 多拍后达到满匹配。全程一拍出结果、零延迟、双向公平</text>
+  </g>
+
+  <!-- legend -->
+  <g>
+    <rect x="30" y="556" width="16" height="16" rx="3" fill="#155e75"/><text x="54" y="569" font-size="10" fill="#94a3b8">请求</text>
+    <rect x="120" y="556" width="16" height="16" rx="3" fill="#a16207"/><text x="144" y="569" font-size="10" fill="#94a3b8">被 grant</text>
+    <rect x="210" y="556" width="16" height="16" rx="3" fill="#047857"/><text x="234" y="569" font-size="10" fill="#94a3b8">匹配</text>
+    <rect x="300" y="556" width="16" height="16" rx="3" fill="#2563eb"/><text x="324" y="569" font-size="10" fill="#94a3b8">被 accept</text>
+    <rect x="400" y="556" width="16" height="16" rx="3" fill="#0b1220" stroke="#334155"/><text x="424" y="569" font-size="10" fill="#94a3b8">落空/未匹配</text>
+  </g>
+</svg>

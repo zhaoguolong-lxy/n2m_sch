@@ -659,8 +659,15 @@ module tb_top;
     tb_core #(.N(8),   .M(8),   .PTR_RESET(0), .NAME("cfg_8x8_nrst")) c10 ();
     tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .ITER(1), .NAME("cfg_8x8_i1"  )) c11 ();
     tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .ITER(3), .NAME("cfg_8x8_i3"  )) c12 ();
+    // non-power-of-two boundary sweep (around the $clog2 wrap edges)
+    tb_core #(.N(9),   .M(9),   .PTR_RESET(1), .NAME("cfg_9x9"     )) c13 ();
+    tb_core #(.N(9),   .M(11),  .PTR_RESET(1), .NAME("cfg_9x11"    )) c14 ();
+    tb_core #(.N(8),   .M(9),   .PTR_RESET(1), .NAME("cfg_8x9"     )) c15 ();
+    tb_core #(.N(11),  .M(9),   .PTR_RESET(1), .NAME("cfg_11x9"    )) c16 ();
+    tb_core #(.N(7),   .M(11),  .PTR_RESET(1), .NAME("cfg_7x11"    )) c17 ();
+    tb_core #(.N(15),  .M(15),  .PTR_RESET(1), .ITER(1), .NAME("cfg_15x15_i1")) c18 ();
 
-    localparam integer NUM_CFG = 13;
+    localparam integer NUM_CFG = 19;
 
     initial begin
         $display("============================================================");

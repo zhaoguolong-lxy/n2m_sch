@@ -71,8 +71,8 @@ re-checks two global invariants (orthogonality and grant-implies-request).
 
 ## 2. Results
 
-Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 13 configurations
-passed; total 141,213 checks, 0 errors.
+Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 19 configurations
+passed; total 247,485 checks, 0 errors.
 
 | Config | Result | Checks |
 |--------|--------|--------|
@@ -88,8 +88,18 @@ passed; total 141,213 checks, 0 errors.
 | cfg_8x8_nrst (no-reset) | PASS | 13462 |
 | cfg_8x8_i1 (ITER=1) | PASS | 13426 |
 | cfg_8x8_i3 (ITER=3) | PASS | 13462 |
+| cfg_8x9 | PASS | 14863 |
+| cfg_7x11 | PASS | 14964 |
+| cfg_9x9 | PASS | 15860 |
+| cfg_9x11 | PASS | 17270 |
+| cfg_11x9 | PASS | 17097 |
+| cfg_15x15_i1 | PASS | 26218 |
 | cfg_16x16_i1 | PASS | 26892 |
-| **Total** | **ALL PASS** | **141213** |
+| **Total** | **ALL PASS** | **247485** |
+
+The added 8x9 / 9x9 / 9x11 / 11x9 / 7x11 / 15x15 configs exercise the
+`$clog2` width transitions just above/below power-of-two (8->9, 15->16) and
+the pointer wrap at odd boundaries, which is where sizing bugs hide.
 
 ### Matching quality (S17) - effect of ITER
 
@@ -113,9 +123,27 @@ vvp sim/sim.vvp
 
 - The two round-robin directions are both exercised with *all* destinations /
   sources and with a *subset*, verifying skip + wrap behaviour.
-- Non-power-of-two sizes (6, 5, 3) specifically exercise the `$clog2` width
-  and pointer wrap logic.
+- Non-power-of-two sizes (6, 5, 3, 7, 9, 11, 15) exercise the `$clog2` width
+  and pointer wrap logic, including just above/below power-of-two boundaries.
 - The no-reset configuration is verified by `$deposit`-ing the pointers to a
   known state after reset (simulating power-on), then running the same
   invariants; Icarus `$deposit` cannot target unpacked-array words, which is
   why the pointers are stored as flat vectors in the RTL.
+
+## 4. X-state (unknown) check
+
+`tb/tb_x_check.sv` uses `$isunknown()` to verify reset/X behaviour:
+
+| Case | Result |
+|------|--------|
+| During async reset (pointers X) | outputs clean 0, no X |
+| After reset, PTR_RESET=1 | X-free |
+| After reset, PTR_RESET=0 | X (expected: no-reset flop sim artifact) |
+| After $deposit init, PTR_RESET=0 | X-free, then random traffic X-free |
+
+The `& rst_n` gating in `eff_req` guarantees clean 0 outputs during reset even
+when the no-reset pointers hold X.  The X seen after reset for `PTR_RESET=0`
+is a simulation artifact of no-reset flops (real silicon has a deterministic
+unknown value, not X, and round-robin fairness is invariant to it).  Use
+`PTR_RESET=1` for a cleanly-reset (X-free) simulation, or `$deposit` the
+pointers to model power-on in a no-reset flow.

@@ -44,7 +44,7 @@ yosys -s synth/synth.ys        # prints area stats for 4 configs
 |-------|---------|---------|
 | N | number of sources (>= 2) | 8 |
 | M | number of destinations (>= 2) | 8 |
-| PTR_RESET | 0 = no-reset pointers (area), 1 = async reset | 0 |
+| PTR_RESET | 0 = no-reset pointers (area), 1 = async reset | 1 |
 | ITER | matching iterations (1 = area-optimal, 2..3 = higher throughput) | 2 |
 
 ## Interface

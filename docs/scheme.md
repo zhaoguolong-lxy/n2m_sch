@@ -126,9 +126,9 @@ registered pointers). The pointers update at `posedge clk`.
 - `rst_n` (active-low, async) gates the effective requests to zero while
   asserted, so all outputs are 0 during reset with no X propagation even when
   pointers are uninitialized.
-- The round-robin pointers are no-reset by default (`PTR_RESET = 0`): fairness
-  is invariant to their initial value, so reset logic is pure overhead. A
-  `PTR_RESET = 1` parameter adds async reset for deterministic simulation.
+- The round-robin pointers default to async reset (`PTR_RESET = 1`) for an
+  X-free simulation. Fairness is invariant to their initial value, so setting
+  `PTR_RESET = 0` drops the reset for a leaner, no-reset design.
 
 ## 8. Coding style compliance
 

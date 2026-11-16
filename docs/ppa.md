@@ -52,7 +52,8 @@ over a few cycles anyway and then every ITER reaches a full matching.
 ## 4. Applied optimizations
 
 - Arithmetic find-first-one grant/accept core (smaller than thermometer PPE).
-- No-reset pointers by default (`PTR_RESET=0`).
+- Pointers default to async reset (`PTR_RESET=1`); `PTR_RESET=0` drops the
+  reset for a leaner no-reset design (~3 cells saved).
 - Pointer update reuses the first-pass match index via two small one-hot-to-
   binary functions (no duplicate encoders on the critical path).
 - Flat internal vectors inside the generate loop (synthesis-friendly).

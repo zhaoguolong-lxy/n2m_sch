@@ -51,9 +51,11 @@
 // Reset:
 //   - rst_n is an active-low asynchronous reset that gates the outputs to 0
 //     while asserted (via eff_req).
-//   - The round-robin pointers are no-reset by default (PTR_RESET = 0)
-//     because round-robin fairness is invariant to their initial value; set
-//     PTR_RESET = 1 to add an async reset for deterministic simulation.
+//   - The round-robin pointers default to async reset (PTR_RESET = 1) so the
+//     design is X-free in simulation after reset.  Round-robin fairness is
+//     invariant to the pointer initial value, so for a leaner design set
+//     PTR_RESET = 0 to drop the reset (no-reset flops); a no-reset testbench
+//     can $deposit the pointers to model power-on.
 //
 // Implementation notes:
 //   - Internal request/grant/accept matrices are carried as flat 1-D vectors
@@ -69,7 +71,7 @@
 module fair_arbiter #(
     parameter integer N         = 8,    // number of sources      (>= 2)
     parameter integer M         = 8,    // number of destinations (>= 2)
-    parameter integer PTR_RESET = 0,    // 0 = no-reset pointers, 1 = async reset
+    parameter integer PTR_RESET = 1,    // 0 = no-reset pointers (area), 1 = async reset (default)
     parameter integer ITER      = 2     // number of matching iterations (>= 1)
 ) (
     input  wire                      clk,      // clock input
@@ -101,8 +103,9 @@ module fair_arbiter #(
     //   g_ptr[j] = g_ptr[j*CLOG2N +: CLOG2N]
     //   a_ptr[i] = a_ptr[i*CLOG2M +: CLOG2M]
     //
-    // They are deliberately no-reset by default: any initial value yields a
-    // valid round-robin order, so reset logic would only add area/power.
+    // They default to async reset (PTR_RESET=1) for an X-free simulation; any
+    // initial value yields a valid round-robin order, so PTR_RESET=0 drops the
+    // reset for a leaner, no-reset design.
     //=========================================================================
     reg [M*CLOG2N-1:0] g_ptr;
     reg [N*CLOG2M-1:0] a_ptr;

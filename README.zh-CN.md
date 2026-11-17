@@ -34,6 +34,23 @@ for i = 0 .. N-1:
 
 形式化/穷举验证：`scripts/verify_maximal.py` 对小规模**穷举全部请求矩阵**，并对 2..16 的所有 N/M 形状、对抗模式、任意初始匹配做了 67,118 例检查，0 失败。RTL 层 `tb/tb_maximal.sv` 覆盖 18 种 N/M 形状 × 随机/对抗流量，0 非极大、0 正交违规。
 
+## 电路级方案图（PNG，总 / 分）
+
+低深度 **波前仲裁器（WFA / WWFA）** 变体的电路级 PNG 图：
+
+- [总图](diagram/circuit/wfa_00_overview.png)
+- [Crosspoint cell 门级电路](diagram/circuit/wfa_01_cell.png)
+- [对角线波前阵列](diagram/circuit/wfa_02_diagonal.png)
+- [δ 旋转与公平性](diagram/circuit/wfa_03_rotation.png)
+- [不浪费调度示例](diagram/circuit/wfa_04_nowaste.png)
+- [深度 / 面积指标](diagram/circuit/wfa_05_depth.png)
+
+索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
+（`rtl/fair_arbiter_torus.v`）与主设计端口/参数兼容；10x10 综合为 3699 cells /
+39 级，而旧 iSLIP+fill 为 11821 cells / 300 级。WFA 是极大匹配（不浪费调度）
+但不是最大匹配，且源/目的 RR 顺序是一升一降的折中；8x8/10x10 满足 ≤40 级，
+9x11/11x9/16x16 超 1-8 级，索引文档给出了 2 拍流水 / 分层优化方案。
+
 ## 文件结构
 
 ```

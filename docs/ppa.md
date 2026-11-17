@@ -139,3 +139,28 @@ impractical for a single-cycle hardware arbiter; the serial residual fill is
 the smallest known way to make the result provably maximal at these sizes.
 Binary-tree round-robin arbiters (PRRA/IPRRA) are only preferable for very
 large N (>=64).
+
+## 8. Logic-depth metric (target <= 40 levels)
+
+The user-visible metric is the longest combinational path in Yosys generic gate
+levels (`ltp -noff`), including the request rotation, the matching array and the
+output encoders.  Designs above 40 levels are flagged for optimization.
+
+| Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
+|--------|-----|-------|------|------|-------|
+| iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
+| Wavefront WFA (new) | **28** | **39** | 41 | 43 | 48 |
+| Target | <=40 | <=40 | <=40 | <=40 | <=40 |
+
+The WFA numbers are for `rtl/fair_arbiter_torus.v` (P = max(N,M) torus
+diagonals, P stages, rotating start).  `8x8` and `10x10` meet the target;
+`9x11` / `11x9` are 1-3 levels over and can be fixed by removing the output
+encoder from the critical path or retiming; `16x16` is 8 levels over and is the
+candidate for a 2-cycle pipelined wavefront (P/2 = 8 stages per cycle, about 24
+levels) or a 4x4 hierarchical split.  The cell itself is 2 gate levels
+(`G = R & N & W`, token update = AND + NAND), so the depth is dominated by P.
+
+WFA also removes the serial N-stage fill: the 10x10 area drops from 11,821 to
+3,699 cells and the flop count from 80 to 4 (only the rotating start register).
+The price is that WFA is maximal but not maximum-cardinality, and the exact
+per-port RR order is relaxed (see `diagram/circuit/README.md`).

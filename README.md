@@ -20,6 +20,28 @@ pairs and 0 orthogonality violations over 773 cycles each; long randomized soak
 violations; the algorithm-level script checks 67,118 cases (exhaustive for small
 shapes, every shape 2..16) with 0 failures; reset and X-state checks pass.
 
+## Detailed circuit-level diagrams (PNG)
+
+The low-depth **Wavefront Arbiter (WFA/WWFA)** variant is documented as
+circuit-level PNG diagrams ("总 / 分" set): cell gates, diagonal stages,
+rotating priority, the no-waste proof, and the depth/area metric.
+
+- [Overview](diagram/circuit/wfa_00_overview.png)
+- [Crosspoint cell](diagram/circuit/wfa_01_cell.png)
+- [Diagonal stages](diagram/circuit/wfa_02_diagonal.png)
+- [Priority rotation / fairness](diagram/circuit/wfa_03_rotation.png)
+- [No-waste example](diagram/circuit/wfa_04_nowaste.png)
+- [Depth / area metric](diagram/circuit/wfa_05_depth.png)
+
+Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
+The WFA RTL (`rtl/fair_arbiter_torus.v`) has the same ports/parameters as the
+main design; 10x10 maps to 3699 cells / 39 gate levels, vs 11821 cells /
+300 levels for the iSLIP+fill version.  It is maximal (no wasted pair) but not
+maximum-cardinality, and its per-port RR order is relaxed (the two sides rotate
+in opposite directions); see the index for the exact tradeoff.  The <=40-level
+target is met at 8x8/10x10; 9x11, 11x9 and 16x16 are 1-8 levels over and have a
+documented 2-cycle / hierarchical optimization path.
+
 ## Files
 
 ```

@@ -1,7 +1,8 @@
 //=============================================================================
 // tb_perf.sv - scheduling performance benchmark
 //
-// For each (N, M, ITER) configuration, measures over a LONG run:
+// For each (N, M, ITER, AUGMENT) configuration, measures over a long-enough
+// random run:
 //   first      : matches in the first cycle of full-crossbar traffic
 //   converge   : cycles until the matching reaches min(N,M)
 //   full       : average matches/cycle under full-crossbar (100% load)
@@ -9,13 +10,18 @@
 //
 // "matches/cycle" is the number of source->dest grants issued in one cycle,
 // i.e. how many requests the scheduler dispatches per beat (max = min(N,M)).
+//
+// The residual fill makes the DUT combinatorially deep, so Icarus is slow per
+// cycle.  NCY=1500 samples after a 100-cycle warmup is a long run that keeps
+// the standard error far below one percentage point of min(N,M).
 //=============================================================================
 `timescale 1ns/1ps
 
 module perf_runner #(
-    parameter integer N    = 8,
-    parameter integer M    = 8,
-    parameter integer ITER = 2
+    parameter integer N       = 8,
+    parameter integer M       = 8,
+    parameter integer ITER    = 4,
+    parameter integer AUGMENT = 1
 ) ();
     localparam integer CWN = $clog2(N);
     localparam integer CWM = $clog2(M);
@@ -43,7 +49,7 @@ module perf_runner #(
     integer bern_sum;
     integer g;
 
-    fair_arbiter #(.N(N), .M(M), .PTR_RESET(1), .ITER(ITER)) dut (
+    fair_arbiter #(.N(N), .M(M), .PTR_RESET(1), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
         .clk(clk), .rst_n(rst_n),
         .i_src_dest_req(i_req), .i_src_bp(i_src_bp), .i_dest_bp(i_dest_bp),
         .o_grant_rand_vld(o_grant), .o_grant_src_vld(o_src_vld), .o_grant_src_ptr(o_src_ptr),
@@ -100,8 +106,8 @@ module perf_runner #(
             @(posedge clk);
         end
 
-        $display("  %0dx%-0d  ITER=%0d | first=%0d  converge=%0d | full=%.2f/%0d (%.0f%%) | bern=%.2f/%0d (%.0f%%)",
-                 N, M, ITER, first_cnt, converge,
+        $display("  %0dx%-0d ITER=%0d AUG=%0d | first=%0d converge=%0d | full=%.2f/%0d (%.0f%%) | bern=%.2f/%0d (%.0f%%)",
+                 N, M, ITER, AUGMENT, first_cnt, converge,
                  full_sum * 1.0 / NCY, MIN, 100.0 * full_sum / (NCY * MIN),
                  bern_sum * 1.0 / NCY, MIN, 100.0 * bern_sum / (NCY * MIN));
 
@@ -111,31 +117,44 @@ endmodule
 
 module tb_perf_top;
 
+    localparam integer NCY = 1500;
     integer num_done = 0;
 
-    perf_runner #(.N(4),  .M(4),  .ITER(1)) p00 ();
-    perf_runner #(.N(4),  .M(4),  .ITER(2)) p01 ();
-    perf_runner #(.N(4),  .M(4),  .ITER(3)) p02 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(1)) p03 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(2)) p04 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(3)) p05 ();
-    perf_runner #(.N(16), .M(16), .ITER(1)) p06 ();
-    perf_runner #(.N(8),  .M(4),  .ITER(1)) p08 ();
-    perf_runner #(.N(8),  .M(4),  .ITER(2)) p09 ();
-    perf_runner #(.N(4),  .M(8),  .ITER(1)) p10 ();
-    perf_runner #(.N(4),  .M(8),  .ITER(2)) p11 ();
-    perf_runner #(.N(9),  .M(11), .ITER(1)) p12 ();
-    perf_runner #(.N(9),  .M(11), .ITER(2)) p13 ();
+    // AUGMENT=0 (strict iSLIP fairness, still maximal via the fill)
+    perf_runner #(.N(4),  .M(4),  .ITER(1), .AUGMENT(0)) p00 ();
+    perf_runner #(.N(4),  .M(4),  .ITER(2), .AUGMENT(0)) p01 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(1), .AUGMENT(0)) p02 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(2), .AUGMENT(0)) p03 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(0)) p04 ();
+    perf_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(0)) p05 ();
+    perf_runner #(.N(16), .M(16), .ITER(1), .AUGMENT(0)) p06 ();
 
-    localparam integer NUM = 13;
+    // AUGMENT=1 (default: larger matching, fairness relaxed)
+    perf_runner #(.N(4),  .M(4),  .ITER(4), .AUGMENT(1)) p07 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(1), .AUGMENT(1)) p08 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(1)) p09 ();
+    perf_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(1)) p10 ();
+    perf_runner #(.N(16), .M(16), .ITER(1), .AUGMENT(1)) p11 ();
+    perf_runner #(.N(8),  .M(4),  .ITER(4), .AUGMENT(1)) p12 ();
+    perf_runner #(.N(4),  .M(8),  .ITER(4), .AUGMENT(1)) p13 ();
+    perf_runner #(.N(9),  .M(11), .ITER(4), .AUGMENT(1)) p14 ();
+    perf_runner #(.N(11), .M(9),  .ITER(4), .AUGMENT(1)) p15 ();
+
+    // ITER sweep at the two key square sizes (find the throughput sweet spot)
+    perf_runner #(.N(8),  .M(8),  .ITER(2), .AUGMENT(1)) p16 ();
+    perf_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(1)) p17 ();
+    perf_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(0)) p18 ();
+    perf_runner #(.N(10), .M(10), .ITER(2), .AUGMENT(1)) p19 ();
+
+    localparam integer NUM = 20;
 
     initial begin
         $display("=====================================================================");
-        $display(" fair_arbiter performance benchmark  (PTR_RESET=1, per config 1600 cyc)");
-        $display("   full   = full-crossbar 100%% load ;  bern = Bernoulli(0.5)");
-        $display("   ratio  = matches/cycle over min(N,M)  (max = 100%%)");
+        $display(" fair_arbiter performance benchmark  (PTR_RESET=1, %0d cycles/config)", NCY);
+        $display("   full = full-crossbar 100%% load ; bern = Bernoulli(0.5)");
+        $display("   values = matches/cycle over min(N,M)  (max = 100%%)");
         $display("---------------------------------------------------------------------");
-        $display("  NxM  ITER | first converge | full match/cyc | bern match/cyc");
+        $display("  NxM   cfg              | first converge | full match/cyc | bern match/cyc");
 
         while (num_done < NUM)
             #10;

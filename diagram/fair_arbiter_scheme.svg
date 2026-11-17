@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 900" font-family="'JetBrains Mono','Noto Sans SC','PingFang SC',monospace">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 1120" font-family="'JetBrains Mono','Noto Sans SC','PingFang SC',monospace">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap');
     text { font-family: 'JetBrains Mono','Noto Sans SC','PingFang SC',monospace; }
@@ -28,8 +28,8 @@
   <rect width="100%" height="100%" fill="url(#grid)"/>
 
   <!-- Title -->
-  <text x="30" y="40" class="ttl">公平仲裁器 (iSLIP 交叉开关调度器) — 方案图</text>
-  <text x="30" y="58" class="sub">N 源 × M 目的 · 单拍出结果 · 双向 round-robin 公平 · ITER 轮迭代参数化 · 纯组合逻辑 + 指针寄存器</text>
+  <text x="30" y="40" class="ttl">公平仲裁器 (iSLIP + 增广 + 残余填充) — 方案图</text>
+  <text x="30" y="58" class="sub">N 源 × M 目的 · 单拍出结果 · 双向 round-robin · 每拍极大匹配(无浪费调度) · 纯组合逻辑 + 指针寄存器</text>
 
   <!-- ===================== Inputs ===================== -->
   <rect x="40" y="90" width="250" height="62" rx="6" fill="#0f172a"/>
@@ -94,7 +94,7 @@
   <rect x="700" y="312" width="220" height="66" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
   <text x="810" y="336" class="nm" text-anchor="middle">g_ptr[M·clog2N] 寄存器</text>
   <text x="810" y="352" class="ds" text-anchor="middle">目的侧轮询指针</text>
-  <text x="810" y="366" class="tiny" text-anchor="middle">默认无复位 (PTR_RESET=0)</text>
+  <text x="810" y="366" class="tiny" text-anchor="middle">默认异步复位 PTR_RESET=1 (错开对角)</text>
 
   <rect x="700" y="410" width="220" height="66" rx="6" fill="#0f172a"/>
   <rect x="700" y="410" width="220" height="66" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
@@ -110,41 +110,64 @@
   <path d="M 340 476 L 340 496 L 80 496 L 80 345" stroke="#fb923c" stroke-width="1.2" fill="none" stroke-dasharray="4,3" marker-end="url(#arw)"/>
   <text x="96" y="508" fill="#fb923c" class="tiny">下一轮: 仅未匹配源/目的 (ITER&gt;1)</text>
 
-  <!-- ===================== Final match ===================== -->
+  <!-- ===================== iSLIP final match ===================== -->
   <path d="M 340 476 L 340 530" stroke="#64748b" stroke-width="1.5" marker-end="url(#arw)"/>
 
   <rect x="40" y="530" width="760" height="54" rx="6" fill="#0f172a"/>
   <rect x="40" y="530" width="760" height="54" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-  <text x="420" y="552" class="nm" text-anchor="middle">最终匹配 = 各轮 accept 取并 (各轮互斥, 直接 OR)</text>
-  <text x="420" y="568" class="ds" text-anchor="middle">final_accept[i][j] —— 一拍内、正交、双向公平的 N→M 匹配结果</text>
+  <text x="420" y="552" class="nm" text-anchor="middle">iSLIP 匹配 = 各轮 accept 取并 (各轮互斥, 直接 OR)</text>
+  <text x="420" y="568" class="ds" text-anchor="middle">final_accept[i][j] —— 一拍内、正交、双向公平的 N→M 匹配</text>
 
-  <path d="M 420 584 L 420 615" stroke="#64748b" stroke-width="1.5" marker-end="url(#arw)"/>
+  <path d="M 420 584 L 420 606" stroke="#64748b" stroke-width="1.5" marker-end="url(#arw)"/>
+
+  <!-- ===================== AUGMENT (swap) ===================== -->
+  <rect x="40" y="606" width="760" height="86" rx="6" fill="#0f172a"/>
+  <rect x="40" y="606" width="760" height="86" rx="6" fill="rgba(120,53,15,0.35)" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="420" y="628" class="nm" text-anchor="middle">AUGMENT 增广 / 交换 (AUGMENT=1) — 提升匹配规模</text>
+  <text x="420" y="646" class="ds" text-anchor="middle">未匹配源 i 借用已匹配目的 j (其源 k 可重配); k 迁到另一个空闲目的 l —— 长度 3 增广路径</text>
+  <text x="420" y="662" class="ds" text-anchor="middle">两段最低索引匹配: A) i → j (releasable)  B) displaced k → 空闲 l；只增不减规模</text>
+  <text x="420" y="678" class="tiny" text-anchor="middle">注意: 并行交换可能"移走但未完成替换" —— 因此本阶段不负责极大性, 由下一级填充兜底</text>
+
+  <path d="M 420 692 L 420 714" stroke="#64748b" stroke-width="1.5" marker-end="url(#arw)"/>
+
+  <!-- ===================== Residual fill ===================== -->
+  <rect x="40" y="714" width="760" height="104" rx="6" fill="#0f172a"/>
+  <rect x="40" y="714" width="760" height="104" rx="6" fill="rgba(6,78,59,0.55)" stroke="#34d399" stroke-width="2"/>
+  <text x="420" y="736" class="nm" text-anchor="middle">残余填充 (始终开启) — 极大性硬保证</text>
+  <text x="420" y="754" class="ds" text-anchor="middle">free = 未被 iSLIP + swap 匹配的目的; 按源 i = 0..N-1 串行: 若 i 仍空闲, 取一个仍空闲且被 i 请求的目的</text>
+  <text x="420" y="770" class="ds" text-anchor="middle">只 ADD 匹配, 从不移动/删除 → 正交性保持, 规模不减; 还顺带修复 swap 的未完成 move</text>
+  <text x="420" y="786" class="tiny" text-anchor="middle">极大性证明: 若残留 req(i,j) 且 i、j 都空闲 —— 空闲集只减不增, 轮到 i 时 j 仍空闲, i 必取一个目的, 矛盾</text>
+  <text x="420" y="802" class="tiny" text-anchor="middle">结论: 对任意 N/M、任意请求矩阵, 输出都不存在"两端空闲的请求对" (10x10、9x11、N&lt;M、N&gt;M 全部成立)</text>
+
+  <path d="M 420 818 L 420 840" stroke="#64748b" stroke-width="1.5" marker-end="url(#arw)"/>
 
   <!-- ===================== Outputs ===================== -->
-  <rect x="40" y="615" width="180" height="66" rx="6" fill="#0f172a"/>
-  <rect x="40" y="615" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-  <text x="130" y="639" class="nm" text-anchor="middle">o_grant_rand_vld</text>
-  <text x="130" y="655" class="ds" text-anchor="middle">[N][M] 命中矩阵</text>
-  <text x="130" y="669" class="tiny" text-anchor="middle">(此处断言正交)</text>
+  <rect x="40" y="840" width="180" height="66" rx="6" fill="#0f172a"/>
+  <rect x="40" y="840" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="130" y="864" class="nm" text-anchor="middle">o_grant_rand_vld</text>
+  <text x="130" y="880" class="ds" text-anchor="middle">[N][M] 最终命中矩阵</text>
+  <text x="130" y="894" class="tiny" text-anchor="middle">(正交 + 极大)</text>
 
-  <rect x="240" y="615" width="180" height="66" rx="6" fill="#0f172a"/>
-  <rect x="240" y="615" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-  <text x="330" y="639" class="nm" text-anchor="middle">o_grant_src_vld/ptr</text>
-  <text x="330" y="655" class="ds" text-anchor="middle">[N] 源命中 + 目的号</text>
-  <text x="330" y="669" class="tiny" text-anchor="middle">ptr = [clog2(M)]</text>
+  <rect x="240" y="840" width="180" height="66" rx="6" fill="#0f172a"/>
+  <rect x="240" y="840" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="330" y="864" class="nm" text-anchor="middle">o_grant_src_vld/ptr</text>
+  <text x="330" y="880" class="ds" text-anchor="middle">[N] 源命中 + 目的号</text>
+  <text x="330" y="894" class="tiny" text-anchor="middle">ptr = [clog2(M)]</text>
 
-  <rect x="440" y="615" width="180" height="66" rx="6" fill="#0f172a"/>
-  <rect x="440" y="615" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-  <text x="530" y="639" class="nm" text-anchor="middle">o_grant_dest_vld/ptr</text>
-  <text x="530" y="655" class="ds" text-anchor="middle">[M] 目的命中 + 源号</text>
-  <text x="530" y="669" class="tiny" text-anchor="middle">ptr = [clog2(N)]</text>
+  <rect x="440" y="840" width="180" height="66" rx="6" fill="#0f172a"/>
+  <rect x="440" y="840" width="180" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="530" y="864" class="nm" text-anchor="middle">o_grant_dest_vld/ptr</text>
+  <text x="530" y="880" class="ds" text-anchor="middle">[M] 目的命中 + 源号</text>
+  <text x="530" y="894" class="tiny" text-anchor="middle">ptr = [clog2(N)]</text>
 
   <!-- legend -->
-  <rect x="40" y="720" width="860" height="130" rx="10" fill="none" stroke="#334155" stroke-width="1"/>
-  <text x="60" y="744" class="lbl">关键要点</text>
-  <text x="60" y="764" class="ds">1. 一拍出结果: grant/accept 全组合, 唯一时序元件是指针寄存器 → 零延迟, ITER 只增加组合深度(延迟)不增加拍数。</text>
-  <text x="60" y="780" class="ds">2. 双向公平: 源侧由 a_ptr 轮询目的, 目的侧由 g_ptr 轮询源; 指针只在"真正匹配"的首轮推进 → 乱序最小。</text>
-  <text x="60" y="796" class="ds">3. ITER 参数化: 1 轮=面积最优; 2~3 轮=吞吐甜点(每 +1 轮 ≈ 首拍多 1 匹配, 面积 +~1.2k cell@8x8)。</text>
-  <text x="60" y="812" class="ds">4. 编码风格: 每 always 只赋值 1 个指针切片; 指针默认无复位; 全 ASCII; 核心用算术最低置位(少用 function)。</text>
-  <text x="60" y="832" class="ds">5. 反压: i_src_bp / i_dest_bp 组合门控; 复位: rst_n 门控输出为 0。</text>
+  <rect x="40" y="936" width="860" height="164" rx="10" fill="none" stroke="#334155" stroke-width="1"/>
+  <text x="60" y="960" class="lbl">关键要点</text>
+  <text x="60" y="982" class="ds">1. 一拍出结果: grant/accept/swap/fill 全组合, 唯一时序元件是指针寄存器 → 零延迟。</text>
+  <text x="60" y="1000" class="ds">2. 双向公平: 源侧 a_ptr 轮询目的, 目的侧 g_ptr 轮询源; 指针只在"真正匹配"的首轮推进 → 乱序最小。</text>
+  <text x="60" y="1018" class="ds">3. 性能: ITER=4 默认; AUGMENT=1 交换把随机流量匹配规模提升到 ~96-99.5% (of min(N,M))。</text>
+  <text x="60" y="1036" class="ds">4. 硬保证: 残余填充只增不删, 对任意 N/M 消除"两端空闲却未调度"的请求对 (即极大匹配)。</text>
+  <text x="60" y="1054" class="ds">5. 取舍: AUGMENT=1 内部固定最低索引优先, 放松 RR 公平性换取规模; AUGMENT=0 严格公平且仍极大。</text>
+  <text x="60" y="1072" class="ds">6. 编码风格: 每 always 只赋值 1 个指针切片; 指针默认异步复位; RTL 全 ASCII; 核心用算术最低置位。</text>
+  <text x="60" y="1090" class="ds">7. 反压/复位: i_src_bp / i_dest_bp 组合门控; rst_n 门控输出为 0, 复位期间无 X。</text>
 </svg>

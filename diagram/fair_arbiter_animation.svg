@@ -104,7 +104,7 @@
   <rect width="100%" height="100%" fill="url(#grid)"/>
 
   <!-- title -->
-  <text x="30" y="36" class="ttl">公平仲裁器 · iSLIP 匹配过程演示（3×3 满交叉，ITER=2，指针初值 0）</text>
+  <text x="30" y="36" class="ttl">公平仲裁器 · iSLIP 迭代原理演示（3×3 满交叉，教学最坏情况：指针全 0，ITER=2）</text>
   <text x="30" y="52" class="sub">request → grant → accept → match，全部组合逻辑，一拍内出结果</text>
   <text x="870" y="36" class="tag" text-anchor="middle">零延迟</text>
 
@@ -201,7 +201,7 @@
     <text x="30" y="520" class="cap k7">⑦ Accept 第 2 轮：S1 接受 D1</text>
     <text x="30" y="520" class="cap k8">⑧ 结果：(S0,D0)+(S1,D1)=2 个匹配。ITER=1 只有 1 个，多轮迭代提升匹配质量</text>
     <text x="30" y="520" class="cap k9">⑨ 指针推进：g_ptr[0]→1、a_ptr[0]→1、a_ptr[1]→1（仅"首轮匹配"才推进）</text>
-    <text x="30" y="520" class="cap k10">⑩ 下拍对角线右移 → 多拍后达到满匹配。全程一拍出结果、零延迟、双向公平</text>
+    <text x="30" y="520" class="cap k10">⑩ 默认设计（错开指针复位 + ITER=4 + AUGMENT + 残余填充）满交叉首拍即满匹配，且每拍极大（无浪费）</text>
   </g>
 
   <!-- legend -->
@@ -212,4 +212,10 @@
     <rect x="300" y="556" width="16" height="16" rx="3" fill="#2563eb"/><text x="324" y="569" font-size="10" fill="#94a3b8">被 accept</text>
     <rect x="400" y="556" width="16" height="16" rx="3" fill="#0b1220" stroke="#334155"/><text x="424" y="569" font-size="10" fill="#94a3b8">落空/未匹配</text>
   </g>
+
+  <!-- note: this is a teaching worst case, not the default configuration -->
+  <rect x="30" y="600" width="880" height="66" rx="8" fill="rgba(120,53,15,0.25)" stroke="#fb923c" stroke-width="1"/>
+  <text x="46" y="622" fill="#fbbf24" font-size="11" font-weight="700">说明：本动画刻意把全部指针置 0、只用 ITER=2，以演示"热点源"最坏情况和多轮迭代的作用。</text>
+  <text x="46" y="640" fill="#94a3b8" font-size="10">默认 RTL 配置为 PTR_RESET=1（g_ptr[j]=j、a_ptr[i]=i 错开对角）+ ITER=4 + AUGMENT=1 + 残余填充：</text>
+  <text x="46" y="656" fill="#94a3b8" font-size="10">满交叉流量在首拍就是 min(N,M) 的满匹配；且残余填充保证任意 N/M、任意请求下每拍都是极大匹配（无浪费调度）。</text>
 </svg>

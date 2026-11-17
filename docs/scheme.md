@@ -38,9 +38,68 @@ iSLIP fair and minimizes reordering).
 when a match was possible (e.g. all destinations grant the same "hot" source,
 which accepts only one). Each additional pass re-runs request->grant->accept
 over the still-unmatched sources/destinations, producing a larger (closer to
-maximal) matching. ITER = 1 is the area/delay-optimal variant; ITER = 2..3 is
-the usual sweet spot. Later-pass matches do not advance pointers (standard
-iSLIP), preserving fairness.
+maximal) matching. ITER = 1 is the area/delay-optimal variant; ITER = 2 is the
+measured PPA sweet spot (same 97-98% random-traffic throughput as ITER = 4 at
+8x8/10x10 for 30-36% fewer cells). Later-pass matches do not advance pointers
+(standard iSLIP), preserving fairness.
+
+## 2b. Guaranteed maximal matching (AUGMENT + residual fill)
+
+The hard requirement is stronger than "high throughput": a cycle must never
+leave a requested pair unserved when BOTH its endpoints are idle. In graph
+terms the output matching must be **maximal**:
+
+```
+error  <=>  exists (i,j): req[i][j]=1
+                        and source i has no grant
+                        and dest   j has no grant
+```
+
+Finite iSLIP is not guaranteed to be maximal for every request pattern (and
+the optional swap can occasionally remove a match without completing its
+replacement). The design therefore has two post-processing stages, both purely
+combinational and inside the same cycle:
+
+1. **AUGMENT (swap, AUGMENT=1)** - improves the matching SIZE. An unmatched
+   source `i` borrows a matched destination `j` whose source `k` is
+   rematchable; `k` moves to an alternative free destination `l`. This is a
+   length-3 augmenting path implemented as two lowest-index matchings. It is a
+   pure bonus: it never decreases the size, but it is NOT what guarantees
+   maximality (a simultaneous swap can leave a moved source without its
+   alternative).
+
+2. **Residual fill (always on)** - guarantees maximality for every N and M.
+   It only ADDS matches, never moves or drops one. Adding a match cannot create
+   a new wasted pair (a wasted pair needs both endpoints idle, and adding an
+   edge only removes endpoints from the idle sets). The fill resolves the
+   residual graph (still-unmatched sources x still-free destinations):
+
+```
+free = destinations not matched by iSLIP + swap
+for i = 0 .. N-1:                       // fixed source order
+    if source i is unmatched:
+        pick = a requested destination in `free` (a_ptr preference)
+        match(i, pick)
+        free = free \ {pick}
+```
+
+**Maximality proof.** Suppose a requested pair `(i,j)` remains with source `i`
+unmatched and destination `j` free after the fill. The free set only shrinks,
+so `j` was still free when source `i` was processed. Source `i` would then have
+taken some destination and could not remain unmatched - contradiction.
+Therefore no such pair exists, for ANY request pattern and ANY N/M.
+
+Because the fill only adds edges, orthogonality is preserved and the match
+size never decreases. It also repairs the rare incomplete swap. The fill uses
+the source's `a_ptr` for destination preference, so a source served only by the
+fill still rotates over its destinations.
+
+**Tradeoff.** `AUGMENT=1` uses fixed lowest-index priority inside the swap to
+maximize size. That relaxes round-robin fairness: under a fixed request matrix
+one pair can be repeatedly displaced, which is why the starvation test (S16)
+runs only for `AUGMENT=0`. Set `AUGMENT=0` for strict iSLIP fairness (the fill
+still guarantees maximality, at ~88-94% of min(N,M) average size instead of
+~96-99.5%). See `docs/perf.md` for measurements.
 
 ## 3. Block diagram
 
@@ -68,6 +127,21 @@ iSLIP), preserving fairness.
       |  for each source i: pick one dest among row_grant[i]         |
       |    round-robin pointer a_ptr[i] (CLOG2M bits)                |
       |  output: accept_onehot[i][j]  (one-hot over M dests)         |
+      +-------------------------------------------------------------+
+                                  |
+                                  v
+      +-------------------------------------------------------------+
+      |  AUGMENT (AUGMENT=1, optional): length-3 swap                |
+      |  unmatched i takes j from rematchable k, k moves to free l   |
+      |  improves SIZE; may leave an incomplete move                 |
+      +-------------------------------------------------------------+
+                                  |
+                                  v
+      +-------------------------------------------------------------+
+      |  RESIDUAL FILL (always on): serial dictatorship              |
+      |  unmatched source i takes a still-free requested dest        |
+      |  only ADDS edges -> GUARANTEED maximal matching              |
+      |  (no request with both source and dest idle can survive)     |
       +-------------------------------------------------------------+
                                   |
                  +----------------+----------------+
@@ -105,19 +179,28 @@ priority encoder at these sizes (see docs/ppa.md).
 
 ## 5. Outputs and binary encoding
 
-- `o_grant_rand_vld` is the accept one-hot matrix directly.
-- `o_grant_src_vld[i]` = OR of accept row i.
-- `o_grant_src_ptr[i]` = binary index of the accepted destination, computed as
-  `ptr[i][b] = OR_j (accept[i][j] & bit_b(j))` -- a one-hot-to-binary
+- `o_grant_rand_vld` is the FINAL matching: the union of all iSLIP passes, the
+  optional swap, and the residual fill. The stages are disjoint by
+  construction, so the union is exactly one grant per matched source/dest.
+- `o_grant_src_vld[i]` = OR of the final match row i.
+- `o_grant_src_ptr[i]` = binary index of the granted destination, computed as
+  `ptr[i][b] = OR_j (match[i][j] & bit_b(j))` -- a one-hot-to-binary
   thermometer encoder.
 - `o_grant_dest_vld[j]` / `o_grant_dest_ptr[j]` are the same, over sources.
 
 ## 6. Timing (zero latency)
 
-All grant/accept logic is combinational; only the two pointer arrays are
-registered. Therefore a request presented in cycle T produces its grant in
+All grant/accept/swap/fill logic is combinational; only the two pointer arrays
+are registered. Therefore a request presented in cycle T produces its grant in
 cycle T (the outputs are combinational from `req`, backpressure and the
 registered pointers). The pointers update at `posedge clk`.
+
+The residual fill is a serial chain over the N sources. It is the price of the
+hard maximality guarantee: worst-case depth is O(N) priority selections
+(the iSLIP passes themselves are O(ITER) and the swap is O(1) stages). For a
+timing-critical implementation the chain can be pipelined at the cost of
+latency; the interface here is deliberately zero-latency, so the entire
+matching is computed in one cycle.
 
 ## 7. Backpressure and reset
 

@@ -26,6 +26,24 @@
 //   maximal matching at roughly linear area/depth cost.  Pointers advance only
 //   on the first pass (the standard iSLIP rule), preserving fairness.
 //
+// Hard guarantee - maximal matching every cycle:
+//   A cycle must never leave a requested pair (i,j) unserved when BOTH source
+//   i and destination j are idle.  Finite iSLIP is not guaranteed to be
+//   maximal for every request pattern, and the optional swap may remove a
+//   match without completing its replacement.  The design therefore ends with
+//   a residual-fill stage that only ADDS matches to still-unmatched sources /
+//   still-free destinations (serial dictatorship, fixed source order).  Adding
+//   an edge cannot create a new wasted pair, and no wasted pair can survive
+//   the fill: if (i,j) survived, j was still free on i's turn (the free set
+//   only shrinks) so i would have taken some destination.  This holds for
+//   every N/M, including 10x10 and non-power-of-two sizes.
+//
+//   AUGMENT = 1 adds a length-3 augmenting (swap) pass before the fill.  It
+//   improves the matching SIZE (~96-99.5% vs ~87-94% of min(N,M) on random
+//   traffic) but uses fixed lowest-index priority, which relaxes round-robin
+//   fairness; AUGMENT = 0 is the strictly fair variant.  The fill is what
+//   guarantees maximality in both cases.
+//
 // Round-robin selection hardware (per arbiter), for a request vector req and
 // priority pointer ptr:
 //   mask_hi[k] = (k >= ptr)                     // high-priority half
@@ -77,7 +95,7 @@ module fair_arbiter #(
     parameter integer M         = 8,    // number of destinations (>= 2)
     parameter integer PTR_RESET = 1,    // 0 = no-reset pointers, 1 = async reset (default)
     parameter integer ITER      = 4,    // number of greedy matching iterations (>= 1)
-    parameter integer AUGMENT   = 1     // 1 = add a swap/augmenting pass (near-maximal match)
+    parameter integer AUGMENT   = 1     // 1 = add a swap/augmenting pass (larger matching; fairness relaxed)
 ) (
     input  wire                      clk,      // clock input
     input  wire                      rst_n,    // async reset, active low
@@ -248,18 +266,23 @@ module fair_arbiter #(
     endgenerate
 
     //=========================================================================
-    // Augmenting (swap) phase: recover "wasted" matches so the result is a
-    // maximal (near-maximum) matching.
+    // Augmenting (swap) phase: improve the matching SIZE (AUGMENT=1).
     //
     // A greedy iSLIP pass can waste an opportunity when a source with several
     // grants accepts one, and a destination it was granted cannot be re-matched
     // (its only requester is already matched).  A length-3 augmenting path
-    // fixes it: an unmatched source i "borrows" a matched destination j (whose
-    // source k is rematchable), and k moves to an alternative unmatched
-    // destination l.  Implemented as two lowest-index matchings:
+    // recovers one such opportunity: an unmatched source i "borrows" a matched
+    // destination j (whose source k is rematchable), and k moves to an
+    // alternative unmatched destination l.  Implemented as two lowest-index
+    // matchings:
     //   A: unmatched sources i     -> releasable destinations j (matched to a
     //                                 rematchable source)  [i "takes" j]
     //   B: displaced sources k     -> alternative (unmatched) destinations l
+    //
+    // This stage never decreases the size (a completed swap is +1, an
+    // incomplete move is +0), but a parallel round can leave a displaced
+    // source without its alternative.  It is therefore a SIZE optimization
+    // only; the residual fill below is what guarantees maximality.
     //=========================================================================
     wire [N*M-1:0] augment_accept;
     generate
@@ -367,13 +390,91 @@ module fair_arbiter #(
     endgenerate
 
     //=========================================================================
+    // Residual fill: GUARANTEED maximality for every N/M and every request.
+    //
+    // Adding a match to an existing matching can never create a new "wasted"
+    // pair: a wasted pair needs BOTH endpoints unmatched, and adding an edge
+    // only removes endpoints from the unmatched sets.  It is therefore enough
+    // to resolve the residual graph (sources still unmatched x destinations
+    // still free) with a MAXIMAL matching, and the union is maximal.
+    //
+    // The residual is matched by a serial dictatorship in a fixed source
+    // order: if source i is still unmatched, it takes a requested destination
+    // that is still free.  Maximality proof: suppose a requested pair (i,j)
+    // remains with source i unmatched and destination j free at the end.  The
+    // free set only shrinks, so j was still free when source i was processed;
+    // source i would then have taken some destination and could not remain
+    // unmatched.  Contradiction.
+    //
+    // Properties:
+    //   - only ADDS grants (never moves or drops one), so orthogonality is
+    //     preserved and the matching size cannot decrease;
+    //   - repairs the rare incomplete swap (a displaced source that found no
+    //     alternative is re-matched here);
+    //   - works for any N and M, including non-power-of-two and 10x10;
+    //   - per-source destination preference follows a_ptr, so a source served
+    //     only by the fill still rotates over its destinations.
+    //=========================================================================
+    wire [N-1:0] aug_src_matched;
+    wire [M-1:0] aug_dst_matched;
+    generate
+        for (i = 0; i < N; i = i + 1) begin : gen_fill_sm
+            assign aug_src_matched[i] = |(augment_accept[i*M +: M]);
+        end
+        for (j = 0; j < M; j = j + 1) begin : gen_fill_dm
+            wire [N-1:0] col;
+            for (i = 0; i < N; i = i + 1) begin : gen_fill_dm_bit
+                assign col[i] = augment_accept[i*M + j];
+            end
+            assign aug_dst_matched[j] = |col;
+        end
+    endgenerate
+
+    // fill_free[i*M +: M] = destinations still free before source i's turn.
+    wire [M*(N+1)-1:0] fill_free;
+    wire [N*M-1:0]     fill_accept;   // fill_accept[i*M+j] = source i takes dest j
+    assign fill_free[0 +: M] = ~aug_dst_matched;
+
+    generate
+        for (i = 0; i < N; i = i + 1) begin : gen_fill
+            // candidate destinations: requested, still free, source unmatched
+            wire [M-1:0] cand;
+            for (j = 0; j < M; j = j + 1) begin : gen_fill_cand
+                assign cand[j] = ~aug_src_matched[i]
+                               & eff_req[i*M + j]
+                               & fill_free[i*M + j];
+            end
+            // round-robin destination preference from a_ptr[i] (mask split at
+            // the pointer, as in the iSLIP accept stage)
+            wire [M-1:0] mask_hi;
+            wire [M-1:0] req_hi;
+            wire [M-1:0] req_lo;
+            for (j = 0; j < M; j = j + 1) begin : gen_fill_mask
+                assign mask_hi[j] = (j >= a_ptr[i*CLOG2M +: CLOG2M]);
+                assign req_hi[j]  = cand[j] &  mask_hi[j];
+                assign req_lo[j]  = cand[j] & ~mask_hi[j];
+            end
+            wire [M-1:0] pick;
+            assign pick = (|req_hi) ? (req_hi & ~(req_hi - 1'b1))
+                                    : (req_lo & ~(req_lo - 1'b1));
+            assign fill_accept[i*M +: M] = pick;
+            assign fill_free[(i+1)*M +: M] = fill_free[i*M +: M] & ~pick;
+        end
+    endgenerate
+
+    // Final matching = augmented matching + residual fill (disjoint by
+    // construction: the fill only uses sources/destinations left unmatched).
+    wire [N*M-1:0] match_accept;
+    assign match_accept = augment_accept | fill_accept;
+
+    //=========================================================================
     // Outputs.
     //=========================================================================
-    assign o_grant_rand_vld = augment_accept;   // flat -> 2-D port, bit (i,j)=i*M+j
+    assign o_grant_rand_vld = match_accept;   // flat -> 2-D port, bit (i,j)=i*M+j
 
     generate
         for (i = 0; i < N; i = i + 1) begin : gen_out_src_vld
-            assign o_grant_src_vld[i] = |(augment_accept[i*M +: M]);
+            assign o_grant_src_vld[i] = |(match_accept[i*M +: M]);
         end
     endgenerate
 
@@ -382,7 +483,7 @@ module fair_arbiter #(
             for (b = 0; b < CLOG2M; b = b + 1) begin : gen_out_src_ptr_bit
                 wire [M-1:0] terms;
                 for (j = 0; j < M; j = j + 1) begin : gen_out_src_ptr_term
-                    assign terms[j] = augment_accept[i*M + j] & ((j >> b) & 1'b1);
+                    assign terms[j] = match_accept[i*M + j] & ((j >> b) & 1'b1);
                 end
                 assign o_grant_src_ptr[i][b] = |terms;
             end
@@ -393,7 +494,7 @@ module fair_arbiter #(
         for (j = 0; j < M; j = j + 1) begin : gen_out_dest_vld
             wire [N-1:0] col;
             for (i = 0; i < N; i = i + 1) begin : gen_out_dest_vld_bit
-                assign col[i] = augment_accept[i*M + j];
+                assign col[i] = match_accept[i*M + j];
             end
             assign o_grant_dest_vld[j] = |col;
         end
@@ -404,7 +505,7 @@ module fair_arbiter #(
             for (b = 0; b < CLOG2N; b = b + 1) begin : gen_out_dest_ptr_bit
                 wire [N-1:0] terms;
                 for (i = 0; i < N; i = i + 1) begin : gen_out_dest_ptr_term
-                    assign terms[i] = augment_accept[i*M + j] & ((i >> b) & 1'b1);
+                    assign terms[i] = match_accept[i*M + j] & ((i >> b) & 1'b1);
                 end
                 assign o_grant_dest_ptr[j][b] = |terms;
             end

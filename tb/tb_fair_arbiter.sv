@@ -672,8 +672,15 @@ module tb_top;
     tb_core #(.N(11),  .M(9),   .PTR_RESET(1), .NAME("cfg_11x9"    )) c16 ();
     tb_core #(.N(7),   .M(11),  .PTR_RESET(1), .NAME("cfg_7x11"    )) c17 ();
     tb_core #(.N(15),  .M(15),  .PTR_RESET(1), .ITER(1), .NAME("cfg_15x15_i1")) c18 ();
+    // 10x10 (explicitly requested N=M=10 case): default maximal design and a
+    // no-swap variant that also exercises the S16 fairness test.
+    tb_core #(.N(10),  .M(10),  .PTR_RESET(1), .NAME("cfg_10x10"    )) c19 ();
+    tb_core #(.N(10),  .M(10),  .PTR_RESET(1), .AUGMENT(0), .NAME("cfg_10x10_noswap")) c20 ();
+    // 8x8 strict-fairness variant: runs the S16 starvation test at a
+    // power-of-two baseline size (S16 is skipped for AUGMENT=1).
+    tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .AUGMENT(0), .NAME("cfg_8x8_noswap")) c21 ();
 
-    localparam integer NUM_CFG = 19;
+    localparam integer NUM_CFG = 22;
 
     initial begin
         $display("============================================================");

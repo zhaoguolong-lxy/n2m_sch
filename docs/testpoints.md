@@ -101,17 +101,17 @@ The added 8x9 / 9x9 / 9x11 / 11x9 / 7x11 / 15x15 configs exercise the
 `$clog2` width transitions just above/below power-of-two (8->9, 15->16) and
 the pointer wrap at odd boundaries, which is where sizing bugs hide.
 
-### Matching quality (S17) - effect of ITER
+### Matching quality (S17) - staggered reset
 
 | Config | First-cycle match | Converge to full (cycles) |
 |--------|-------------------|---------------------------|
-| 8x8 ITER=1 | 1 of 8 | 6 |
-| 8x8 ITER=2 | 2 of 8 | 5 |
-| 8x8 ITER=3 | 3 of 8 | 4 |
+| 8x8 ITER=1 | 8 of 8 | 0 |
+| 8x8 ITER=2 | 8 of 8 | 0 |
+| 8x8 ITER=3 | 8 of 8 | 0 |
 
-Each extra iteration buys ~1 more first-cycle match and ~1 faster convergence;
-all variants converge to a full matching in steady state (pointers
-desynchronize over cycles).
+The staggered pointer reset (g_ptr[j]=j, a_ptr[i]=i) makes the first cycle of
+full-crossbar traffic a maximal matching (no iSLIP desynchronization ramp-up).
+ITER then only matters for random/bursty traffic throughput, not full-crossbar.
 
 Command:
 ```

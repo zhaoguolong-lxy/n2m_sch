@@ -52,7 +52,11 @@
 //   - rst_n is an active-low asynchronous reset that gates the outputs to 0
 //     while asserted (via eff_req).
 //   - The round-robin pointers default to async reset (PTR_RESET = 1) so the
-//     design is X-free in simulation after reset.  Round-robin fairness is
+//     design is X-free in simulation after reset.  They reset to a STAGGERED
+//     diagonal (g_ptr[j] = j mod N, a_ptr[i] = i mod M) so that, on the first
+//     cycle of full-crossbar traffic, different destinations grant different
+//     sources and the match is immediately maximal instead of the classic
+//     iSLIP "all grant source 0" desynchronization.  Round-robin fairness is
 //     invariant to the pointer initial value, so for a leaner design set
 //     PTR_RESET = 0 to drop the reset (no-reset flops); a no-reset testbench
 //     can $deposit the pointers to model power-on.
@@ -300,7 +304,7 @@ module fair_arbiter #(
             if (PTR_RESET) begin : gen_g_ptr_rst
                 always @(posedge clk or negedge rst_n) begin
                     if (!rst_n) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= {CLOG2N{1'b0}};
+                        g_ptr[j*CLOG2N +: CLOG2N] <= j % N;   // staggered reset: dest j starts at source j
                     end else if ((|gen_pass[0].dst_col[j*N +: N]) && (onehot_idx_n(gen_pass[0].dst_col[j*N +: N]) == (N-1))) begin
                         g_ptr[j*CLOG2N +: CLOG2N] <= {CLOG2N{1'b0}};        // wrap
                     end else if (|gen_pass[0].dst_col[j*N +: N]) begin
@@ -324,7 +328,7 @@ module fair_arbiter #(
             if (PTR_RESET) begin : gen_a_ptr_rst
                 always @(posedge clk or negedge rst_n) begin
                     if (!rst_n) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= {CLOG2M{1'b0}};
+                        a_ptr[i*CLOG2M +: CLOG2M] <= i % M;   // staggered reset: source i starts at dest i
                     end else if ((|gen_pass[0].accept[i*M +: M]) && (onehot_idx_m(gen_pass[0].accept[i*M +: M]) == (M-1))) begin
                         a_ptr[i*CLOG2M +: CLOG2M] <= {CLOG2M{1'b0}};        // wrap
                     end else if (|gen_pass[0].accept[i*M +: M]) begin

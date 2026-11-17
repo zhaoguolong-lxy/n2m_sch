@@ -54,7 +54,8 @@ module tb_core #(
     parameter integer N         = 8,
     parameter integer M         = 8,
     parameter integer PTR_RESET = 1,
-    parameter integer ITER      = 2,
+    parameter integer ITER      = 4,
+    parameter integer AUGMENT   = 1,
     parameter string  NAME      = "8x8"
 ) ();
 
@@ -74,7 +75,7 @@ module tb_core #(
     logic [M-1:0]            o_dest_vld;
     logic [M*CW_N-1:0]       o_dest_ptr; // flat: dest m at [m*CW_N +: CW_N]
 
-    fair_arbiter #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER)) dut (
+    fair_arbiter #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
         .clk              (clk),
         .rst_n            (rst_n),
         .i_src_dest_req   (i_req),

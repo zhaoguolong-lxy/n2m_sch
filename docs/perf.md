@@ -28,6 +28,29 @@ Metrics:
 | 9x11 | 1 | 9 | 0 | 9.00/9 (100%) | 6.81/9 (76%) |
 | 9x11 | 2 | 9 | 0 | 9.00/9 (100%) | 8.48/9 (94%) |
 
+## Maximal matching (AUGMENT swap)
+
+A greedy iSLIP matching is maximal (no wasted single-edge opportunity) after
+ITER=4, but its SIZE is only ~87-89% of maximum.  The `AUGMENT` pass adds one
+round of length-3 augmenting (an unmatched source "borrows" a matched
+destination whose source is rematchable, which moves to an alternative), which
+recovers most of the gap.
+
+Measured on random (Bernoulli 0.5) traffic, 300 cycles, `tb_maximal.sv`:
+
+| Config | non-maximal (wasted) | ortho violations | size (of min) |
+|--------|----------------------|------------------|---------------|
+| 8x8 ITER=4 AUG=0 (greedy) | 0.0% | 0 | 88.7% |
+| 8x8 ITER=4 AUG=1 (swap)   | 3.7% | 0 | 97.2% |
+| 9x11 ITER=4 AUG=1         | 0.0% | 0 | 99.9% |
+
+- Orthogonality is always preserved (0 violations).
+- The swap raises the matching size from ~89% to ~97-99.9% (near-maximum).
+- The residual non-maximal cases (0-3.7%) are the "accept waste" of the
+  single-round parallel swap; achieving both 0% waste AND ~100% size needs
+  multi-round augmenting (Hopcroft-Karp), which costs more combinational depth
+  and no longer fits one cycle cleanly.
+
 ## Key takeaways
 
 1. **Full-crossbar is immediately maximal**: with the staggered pointer reset,

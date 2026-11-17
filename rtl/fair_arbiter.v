@@ -75,8 +75,9 @@
 module fair_arbiter #(
     parameter integer N         = 8,    // number of sources      (>= 2)
     parameter integer M         = 8,    // number of destinations (>= 2)
-    parameter integer PTR_RESET = 1,    // 0 = no-reset pointers (area), 1 = async reset (default)
-    parameter integer ITER      = 2     // number of matching iterations (>= 1)
+    parameter integer PTR_RESET = 1,    // 0 = no-reset pointers, 1 = async reset (default)
+    parameter integer ITER      = 4,    // number of greedy matching iterations (>= 1)
+    parameter integer AUGMENT   = 1     // 1 = add a swap/augmenting pass (near-maximal match)
 ) (
     input  wire                      clk,      // clock input
     input  wire                      rst_n,    // async reset, active low
@@ -93,7 +94,7 @@ module fair_arbiter #(
     localparam integer CLOG2N = $clog2(N);   // bits to encode a source index
     localparam integer CLOG2M = $clog2(M);   // bits to encode a dest index
 
-    genvar i, j, k, t, b;
+    genvar i, j, k, t, b, l;
 
     //=========================================================================
     // Round-robin state (the ONLY sequential elements).
@@ -247,13 +248,132 @@ module fair_arbiter #(
     endgenerate
 
     //=========================================================================
+    // Augmenting (swap) phase: recover "wasted" matches so the result is a
+    // maximal (near-maximum) matching.
+    //
+    // A greedy iSLIP pass can waste an opportunity when a source with several
+    // grants accepts one, and a destination it was granted cannot be re-matched
+    // (its only requester is already matched).  A length-3 augmenting path
+    // fixes it: an unmatched source i "borrows" a matched destination j (whose
+    // source k is rematchable), and k moves to an alternative unmatched
+    // destination l.  Implemented as two lowest-index matchings:
+    //   A: unmatched sources i     -> releasable destinations j (matched to a
+    //                                 rematchable source)  [i "takes" j]
+    //   B: displaced sources k     -> alternative (unmatched) destinations l
+    //=========================================================================
+    wire [N*M-1:0] augment_accept;
+    generate
+        if (AUGMENT != 0) begin : gen_augment
+
+            // ---- greedy match flags ----
+            wire [N-1:0] src_matched;
+            wire [M-1:0] dst_matched;
+            for (i = 0; i < N; i = i + 1) begin : gen_a_sm
+                assign src_matched[i] = |(final_accept[i*M +: M]);
+            end
+            for (j = 0; j < M; j = j + 1) begin : gen_a_dm
+                wire [N-1:0] col;
+                for (i = 0; i < N; i = i + 1) begin : gen_a_dm_bit
+                    assign col[i] = final_accept[i*M + j];
+                end
+                assign dst_matched[j] = |col;
+            end
+
+            // ---- rematchable[k]: matched k has an alternative unmatched requested dest ----
+            wire [N-1:0] rematchable;
+            for (k = 0; k < N; k = k + 1) begin : gen_a_rematch
+                wire [M-1:0] alt_mask;
+                for (l = 0; l < M; l = l + 1) begin : gen_a_alt
+                    assign alt_mask[l] = eff_req[k*M + l] & ~dst_matched[l];
+                end
+                assign rematchable[k] = src_matched[k] & (|alt_mask);
+            end
+
+            // ---- releasable[j]: dest j is matched to a rematchable source ----
+            wire [M-1:0] releasable;
+            for (j = 0; j < M; j = j + 1) begin : gen_a_releasable
+                wire [N-1:0] terms;
+                for (k = 0; k < N; k = k + 1) begin : gen_a_rel_bit
+                    assign terms[k] = final_accept[k*M + j] & rematchable[k];
+                end
+                assign releasable[j] = |terms;
+            end
+
+            // ---- Matching A: unmatched sources -> releasable destinations ----
+            wire [M*N-1:0] grantS;   // grantS[j*N + i]
+            for (j = 0; j < M; j = j + 1) begin : gen_a_grantS
+                wire [N-1:0] col;
+                for (i = 0; i < N; i = i + 1) begin : gen_a_grantS_bit
+                    assign col[i] = ~src_matched[i] & eff_req[i*M + j] & releasable[j];
+                end
+                assign grantS[j*N +: N] = col & ~(col - 1'b1);
+            end
+            wire [N*M-1:0] swap_accept;   // swap_accept[i*M + j]
+            for (i = 0; i < N; i = i + 1) begin : gen_a_swap
+                wire [M-1:0] row;
+                for (j = 0; j < M; j = j + 1) begin : gen_a_swap_bit
+                    assign row[j] = grantS[j*N + i];
+                end
+                assign swap_accept[i*M +: M] = row & ~(row - 1'b1);
+            end
+
+            // ---- j_taken[j] = dest j taken by a swap; displaced[k] = k's dest taken ----
+            wire [M-1:0] j_taken;
+            for (j = 0; j < M; j = j + 1) begin : gen_a_jtaken
+                wire [N-1:0] col;
+                for (i = 0; i < N; i = i + 1) begin : gen_a_jtaken_bit
+                    assign col[i] = swap_accept[i*M + j];
+                end
+                assign j_taken[j] = |col;
+            end
+            wire [N-1:0] displaced;
+            for (k = 0; k < N; k = k + 1) begin : gen_a_displaced
+                wire [M-1:0] terms;
+                for (j = 0; j < M; j = j + 1) begin : gen_a_displaced_bit
+                    assign terms[j] = final_accept[k*M + j] & j_taken[j];
+                end
+                assign displaced[k] = |terms;
+            end
+
+            // ---- Matching B: displaced sources -> alternative (unmatched) dests ----
+            wire [M*N-1:0] grantM;   // grantM[l*N + k]
+            for (l = 0; l < M; l = l + 1) begin : gen_a_grantM
+                wire [N-1:0] col;
+                for (k = 0; k < N; k = k + 1) begin : gen_a_grantM_bit
+                    assign col[k] = displaced[k] & eff_req[k*M + l] & ~dst_matched[l];
+                end
+                assign grantM[l*N +: N] = col & ~(col - 1'b1);
+            end
+            wire [N*M-1:0] move;   // move[k*M + l]
+            for (k = 0; k < N; k = k + 1) begin : gen_a_move
+                wire [M-1:0] row;
+                for (l = 0; l < M; l = l + 1) begin : gen_a_move_bit
+                    assign row[l] = grantM[l*N + k];
+                end
+                assign move[k*M +: M] = row & ~(row - 1'b1);
+            end
+
+            // ---- combine ----
+            for (i = 0; i < N; i = i + 1) begin : gen_a_combine
+                for (j = 0; j < M; j = j + 1) begin : gen_a_combine_bit
+                    assign augment_accept[i*M + j] =
+                        src_matched[i] ? (displaced[i] ? move[i*M + j] : final_accept[i*M + j])
+                                       : swap_accept[i*M + j];
+                end
+            end
+        end else begin : gen_no_augment
+            assign augment_accept = final_accept;
+        end
+    endgenerate
+
+    //=========================================================================
     // Outputs.
     //=========================================================================
-    assign o_grant_rand_vld = final_accept;   // flat -> 2-D port, bit (i,j)=i*M+j
+    assign o_grant_rand_vld = augment_accept;   // flat -> 2-D port, bit (i,j)=i*M+j
 
     generate
         for (i = 0; i < N; i = i + 1) begin : gen_out_src_vld
-            assign o_grant_src_vld[i] = |(final_accept[i*M +: M]);
+            assign o_grant_src_vld[i] = |(augment_accept[i*M +: M]);
         end
     endgenerate
 
@@ -262,7 +382,7 @@ module fair_arbiter #(
             for (b = 0; b < CLOG2M; b = b + 1) begin : gen_out_src_ptr_bit
                 wire [M-1:0] terms;
                 for (j = 0; j < M; j = j + 1) begin : gen_out_src_ptr_term
-                    assign terms[j] = final_accept[i*M + j] & ((j >> b) & 1'b1);
+                    assign terms[j] = augment_accept[i*M + j] & ((j >> b) & 1'b1);
                 end
                 assign o_grant_src_ptr[i][b] = |terms;
             end
@@ -273,7 +393,7 @@ module fair_arbiter #(
         for (j = 0; j < M; j = j + 1) begin : gen_out_dest_vld
             wire [N-1:0] col;
             for (i = 0; i < N; i = i + 1) begin : gen_out_dest_vld_bit
-                assign col[i] = final_accept[i*M + j];
+                assign col[i] = augment_accept[i*M + j];
             end
             assign o_grant_dest_vld[j] = |col;
         end
@@ -284,7 +404,7 @@ module fair_arbiter #(
             for (b = 0; b < CLOG2N; b = b + 1) begin : gen_out_dest_ptr_bit
                 wire [N-1:0] terms;
                 for (i = 0; i < N; i = i + 1) begin : gen_out_dest_ptr_term
-                    assign terms[i] = final_accept[i*M + j] & ((i >> b) & 1'b1);
+                    assign terms[i] = augment_accept[i*M + j] & ((i >> b) & 1'b1);
                 end
                 assign o_grant_dest_ptr[j][b] = |terms;
             end

@@ -129,6 +129,11 @@ vvp sim/sim.vvp
   known state after reset (simulating power-on), then running the same
   invariants; Icarus `$deposit` cannot target unpacked-array words, which is
   why the pointers are stored as flat vectors in the RTL.
+- **AUGMENT tradeoff**: `AUGMENT=1` (swap) uses a fixed lowest-index priority
+  to maximize matching size, which relaxes round-robin fairness.  The S16
+  starvation test is therefore skipped for `AUGMENT=1` (it would starve a
+  fixed-matrix pair).  Maximality is instead checked by `tb_maximal.sv`
+  (req[i][j] && src and dst both idle -> error).
 
 ## 4. X-state (unknown) check
 

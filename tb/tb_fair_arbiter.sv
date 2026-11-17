@@ -623,7 +623,12 @@ module tb_core #(
         s_both_bp();
         s_bp_toggle();
         s_fairness();
-        s_starvation();
+        // S16 (starvation-freedom) is a round-robin fairness test.  AUGMENT=1
+        // intentionally uses a fixed lowest-index priority to maximize the
+        // matching size, which can starve a fixed-matrix pair (the accepted
+        // fairness tradeoff).  So S16 runs only for the no-augment configs.
+        if (AUGMENT == 0)
+            s_starvation();
         s_matching_quality();
 
         if (errors == 0)

@@ -26,7 +26,7 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 | 8x4 | 4 | 0 | 4.00/4 (100%) | 4.00/4 (100%) |
 | 4x8 | 4 | 0 | 4.00/4 (100%) | 3.91/4 (98%) |
 | 9x11 | 9 | 0 | 9.00/9 (100%) | 8.61/9 (96%) |
-| 11x9 | 9 | 0 | 9.00/9 (100%) | 8.63/9 (96%) |
+| 11x9 | 9 | 0 | 9.00/9 (100%) | 8.67/9 (96%) |
 
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from

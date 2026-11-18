@@ -60,7 +60,7 @@ def d00(path):
     d = SVG(1700, 1050)
     d.txt(30, 38, "波前仲裁器（WFA / WWFA）— 总图", 20, TXT, weight=700)
     d.txt(30, 58, "P = max(N,M) 级对角线波前 · 每级 P 个 crosspoint cell · 单拍输出 · "
-                  "唯一状态是旋转起点 δ", 10.5, DIM)
+                  "N>M 自动转置 · 唯一状态是旋转起点 δ", 10.5, DIM)
 
     # inputs
     d.chip(30, 92, 150, 34, "clk", None, CYAN, title_size=10)
@@ -70,9 +70,10 @@ def d00(path):
     d.chip(30, 330, 220, 48, "i_dest_bp [M]", None, CYAN, title_size=9)
 
     # pad block
-    d.region(290, 150, 200, 260, "① 填充 / 门控")
-    d.txt(300, 180, "P x P 请求矩阵", 9, TXT, weight=600)
-    d.txt(300, 194, "真实 N x M + dummy 0", 7.5, DIM)
+    d.region(290, 150, 200, 260, "① 对称化 / 填充 / 门控")
+    d.txt(300, 180, "N>M: 先转置（纯连线）", 8.5, TXT, weight=600)
+    d.txt(300, 194, "Nc=min, Mc=max, P=Mc", 7.5, DIM)
+    d.txt(300, 208, "真实 Nc x Mc + dummy 0", 7.5, DIM)
     colors = [[MUTED] * 4 for _ in range(4)]
     real = [[True] * 4 for _ in range(4)]
     labels = [[""] * 4 for _ in range(4)]
@@ -80,10 +81,9 @@ def d00(path):
         for j in range(4):
             labels[i][j] = "R" if (i < 3 and j < 3) else "-"
             colors[i][j] = CYAN if (i < 3 and j < 3) else MUTED
-    grid4(d, 306, 214, 30, colors, labels, real=real)
-    d.txt(306, 356, "R = req & rst_n & ~src_bp & ~dest_bp", 7.5, DIM)
-    d.txt(306, 370, "dummy 行/列恒 0", 7.5, DIM)
-    d.txt(306, 384, "输出 req_pad[P x P]", 7.5, CYAN)
+    grid4(d, 306, 228, 30, colors, labels, real=real)
+    d.txt(306, 370, "R = req & rst_n & ~src_bp & ~dest_bp", 7.5, DIM)
+    d.txt(306, 384, "dummy 行/列恒 0；输出 req_pad[P x P]", 7.5, DIM)
 
     # rotate block
     d.region(520, 150, 190, 190, "② 列旋转 δ")
@@ -167,6 +167,7 @@ def d00(path):
     d.txt(1472, 334, "此级只做编码/扇出", 7.5, DIM)
     d.txt(1472, 360, "无 iSLIP 迭代、无 augment", 7.5, DIM)
     d.txt(1472, 374, "无 N 级串行 fill", 7.5, DIM)
+    d.txt(1472, 394, "N>M 时输出转置回 N x M", 7.5, CYAN)
 
     # output chips
     outs = [
@@ -210,8 +211,8 @@ def d00(path):
 
     # depth panel
     d.region(30, 700, 680, 300, "深度指标（Yosys generic gate levels）", AMBER)
-    rows = [("8x8", "P=8", "28", GREEN), ("10x10", "P=10", "38", GREEN),
-            ("9x11", "P=11", "40", GREEN), ("11x9", "P=11", "44", AMBER),
+    rows = [("8x8", "P=8", "28", GREEN), ("10x10", "P=10", "35", GREEN),
+            ("9x11", "P=11", "35", GREEN), ("11x9", "P=11", "35", GREEN),
             ("16x16", "P=16", "48", ROSE)]
     d.txt(50, 732, "配置", 9, DIM, weight=600)
     d.txt(190, 732, "P", 9, DIM, weight=600)
@@ -226,7 +227,7 @@ def d00(path):
               GREEN if c == GREEN else c)
         d.add('<line x1="40" y1="%d" x2="700" y2="%d" stroke="%s" '
               'stroke-width="0.5"/>' % (y + 10, y + 10, MUTED))
-    d.txt(50, 950, "目标线 40：8x8 / 10x10 / 9x11 达标；11x9 / 16x16 见右下优化方案", 8.5, AMBER)
+    d.txt(50, 950, "目标线 40：8x8 / 10x10 / 9x11 / 11x9 达标；仅 16x16 超标", 8.5, AMBER)
 
     # notes
     d.region(740, 780, 930, 220, "算法要点 / 优化方向", ORANGE)
@@ -235,7 +236,7 @@ def d00(path):
         "若某请求对两端在结束时都空闲，则轮到它时两端也空闲，必 grant。",
         "极大 ≠ 最大：允许某个源因唯一目的已被更早的对角线占用而落选。",
         "深度 = P 级 × 单 cell 延时 + 旋转/编码；没有 ITER 展开、没有串行 fill。",
-        "11x9 / 16x16 超过 40：可把波前按 2 拍流水（每拍 P/2 级，~24 级），或按 4x4",
+        "16x16 超过 40：可把波前按 2 拍流水（每拍 P/2 级，~24 级），或按 4x4",
         "分层先局部 WFA 再二级仲裁；代价分别是 latency +1 / 面积与连线增加。",
     ]
     for k, s in enumerate(notes):
@@ -669,9 +670,9 @@ def d05(path):
     rows = [
         ("旧 iSLIP+fill 10x10", 300, ROSE),
         ("WFA 16x16", 48, ROSE),
-        ("WFA 11x9", 44, AMBER),
-        ("WFA 9x11", 40, GREEN),
-        ("WFA 10x10", 38, GREEN),
+        ("WFA 11x9", 35, GREEN),
+        ("WFA 9x11", 35, GREEN),
+        ("WFA 10x10", 35, GREEN),
         ("WFA 8x8", 28, GREEN),
     ]
     maxv = 300
@@ -687,8 +688,8 @@ def d05(path):
     tx = 300 + 480 * 40 / maxv
     d.wire([(tx, 135), (tx, 500)], ROSE, arrow=False, dash="5,4")
     d.txt(tx + 8, 130, "目标 40", 8.5, ROSE)
-    d.txt(60, 560, "旧设计 300 级 → WFA 28-48 级；10x10 从 300 降到 38。", 9, GREEN)
-    d.txt(60, 580, "8x8/10x10/9x11 已达标；11x9/16x16 需按下方方案继续优化。", 9, AMBER)
+    d.txt(60, 560, "旧设计 300 级 → WFA 28-48 级；10x10 从 300 降到 35。", 9, GREEN)
+    d.txt(60, 580, "8x8/10x10/9x11/11x9 已达标；16x16 需按下方方案继续优化。", 9, AMBER)
 
     # table
     d.region(880, 100, 580, 500, "配置明细")
@@ -698,10 +699,10 @@ def d05(path):
         d.txt(x, 136, h, 9, CYAN, weight=600)
     data = [
         ("8x8", "8", "1181", "3", "28", GREEN),
-        ("10x10", "10", "3865", "4", "38", GREEN),
-        ("9x11", "11", "6028", "4", "40", GREEN),
-        ("11x9", "11", "6573", "4", "44", AMBER),
-        ("16x16", "16", "5414", "4", "48", ROSE),
+        ("10x10", "10", "2062", "4", "35", GREEN),
+        ("9x11", "11", "2029", "4", "35", GREEN),
+        ("11x9", "11", "2029", "4", "35", GREEN),
+        ("16x16", "16", "5261", "4", "48", ROSE),
     ]
     for k, (cfg, p, cells, ff, lv, c) in enumerate(data):
         y = 170 + k * 48
@@ -721,8 +722,8 @@ def d05(path):
     # optimization
     d.region(40, 640, 1420, 230, "超标优化方案")
     cards = [
-        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "38 / 28 级", GREEN),
-        ("P = 11（9x11, 11x9）", "9x11=40 达标，11x9=44", "去编码器关键路径 / 重定时", AMBER),
+        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "35 / 28 级", GREEN),
+        ("P = 11（9x11, 11x9）", "均 35 级；11x9 用转置", "已达标，无需再优化", GREEN),
         ("P ≥ 12（16x16）", "48 级，明确超标", "2 拍流水：每拍 P/2 级 ≈ 24 级", ROSE),
     ]
     for k, (t, s1, s2, c) in enumerate(cards):

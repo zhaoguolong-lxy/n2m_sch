@@ -2,6 +2,8 @@
 #
 # rtl/fair_arbiter.v is the Wavefront / WWFA implementation:
 #   P = max(N,M) torus diagonals, P wavefront stages, rotating column offset.
+#   The RTL uses a log-depth cyclic rotator and an N>M transpose wrapper;
+#   flatten is used so ltp reports the full design depth, not the wrapper.
 #
 # No standard-cell liberty file is assumed: "cells" is the count of generic
 # gate-level cells after ABC mapping, and "ltp -noff" is the longest topological
@@ -16,6 +18,7 @@
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 8 -set M 8 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff
 
@@ -26,6 +29,7 @@ design -reset
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 10 -set M 10 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff
 write_verilog -noattr synth/fair_arbiter_10x10_wfa.v
@@ -37,6 +41,7 @@ design -reset
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 9 -set M 11 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff
 
@@ -44,6 +49,7 @@ design -reset
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 11 -set M 9 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff
 
@@ -54,6 +60,7 @@ design -reset
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 16 -set M 16 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff
 
@@ -64,5 +71,6 @@ design -reset
 read_verilog -sv rtl/fair_arbiter.v
 chparam -set N 8 -set M 8 -set PTR_RESET 0 fair_arbiter
 synth -top fair_arbiter
+flatten
 stat
 ltp -noff

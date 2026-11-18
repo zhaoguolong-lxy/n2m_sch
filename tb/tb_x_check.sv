@@ -72,7 +72,7 @@ module tb_x_check;
         check($isunknown(o_grant), "T3 (no-reset) after reset: grant IS X (expected for no-reset flops)");
 
         // ---------------- T3b: after $deposit init, X-free again ----------------
-        $deposit(dut_a.delta, '0);
+        $deposit(dut_a.u_core.delta, '0);
         #3;
         check(!$isunknown(o_grant), "T3b after $deposit init: grant X-free");
         check(!$isunknown(o_src_ptr) || !o_src_vld, "T3b after $deposit init: src_ptr X-free when vld");

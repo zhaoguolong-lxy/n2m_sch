@@ -30,7 +30,7 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
-300 to 38 gate levels and the cell count from 11,821 to 3,865.
+300 to 35 gate levels and the cell count from 11,821 to 2,062.
 
 ## iSLIP reference results (old default)
 
@@ -145,9 +145,9 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
 2. **WFA trades matching size for depth**: random square traffic is 81% (4x4),
    86% (8x8), 89% (10x10), 92% (16x16), and 96-100% for N!=M.  The old
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
-   at 10x10 versus 38 for the WFA.
+   at 10x10 versus 35 for the WFA.
 
-3. **Depth/area (10x10)**: 3865 cells / 38 levels / 4 flops for the WFA,
+3. **Depth/area (10x10)**: 2062 cells / 35 levels / 4 flops for the WFA,
    versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The WFA removes
    the ITER unrolling, the augmenting swap and the serial residual fill.
 
@@ -157,10 +157,11 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    directions, so a strict 0,1,2,... order on both sides is not preserved.
    This is the documented tradeoff for the depth reduction.
 
-5. **P > 10 exceeds the 40-level target**: 9x11 = 40, 11x9 = 44, 16x16 = 48.
-   Optimize by retiming the output encoders (11x9) or by a 2-cycle pipelined
-   wavefront / 4x4 hierarchical split (P=16).  See `docs/ppa.md` and
-   `diagram/circuit/wfa_05_depth.png`.
+5. **Only 16x16 exceeds the 40-level target**: 8x8 = 28, 10x10 = 35,
+   9x11 = 35, 11x9 = 35 (N>M transpose), 16x16 = 48.  For 16x16 use a 2-cycle
+   pipelined wavefront (P/2 = 8 stages per cycle, about 24 levels) or a 4x4
+   hierarchical split; a standard-cell AOI library may also lower the generic
+   48.  See `docs/ppa.md` and `diagram/circuit/wfa_05_depth.png`.
 
 The iSLIP reference table above is kept to show the 97-98% matching-size
 reference point; it is no longer the default RTL.

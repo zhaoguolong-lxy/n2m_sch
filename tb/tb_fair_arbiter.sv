@@ -123,7 +123,7 @@ module tb_core #(
     //-------------------------------------------------------------------------
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
-            $deposit(dut.delta, '0);
+            $deposit(dut.u_core.delta, '0);
         end
     endtask
 

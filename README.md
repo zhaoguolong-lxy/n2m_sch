@@ -36,12 +36,14 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [Depth / area metric](diagram/circuit/wfa_05_depth.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
-The default RTL (`rtl/fair_arbiter.v`) is now the WFA implementation; 10x10 maps to 3865 cells / 38 gate levels, vs 11821 cells /
+The default RTL (`rtl/fair_arbiter.v`) is now the WFA implementation; 10x10 maps to 2062 cells / 35 gate levels, vs 11821 cells /
 300 levels for the iSLIP+fill version.  It is maximal (no wasted pair) but not
 maximum-cardinality, and its per-port RR order is relaxed (the two sides rotate
 in opposite directions); see the index for the exact tradeoff.  The <=40-level
-target is met at 8x8/10x10; 11x9 and 16x16 are 4-8 levels over and have a
-documented 2-cycle / hierarchical optimization path.
+target is met at 8x8/10x10/9x11/11x9; 16x16 is 8 levels over and has a
+documented 2-cycle / hierarchical optimization path.  The RTL uses a
+log-depth cyclic rotator for the delta priority and an N>M transpose wrapper
+(pure wiring), so 11x9 reuses the 9x11 core.
 
 ## Files
 

@@ -46,13 +46,13 @@ rotating priority, the no-waste proof, and the depth/area metric.
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
 The default RTL (`rtl/fair_arbiter.v`) is WFA + the single-side fairness
-override; 10x10 maps to **5297 cells / 36 gate levels** (the override runs in
+override; 10x10 maps to **5488 cells / 35 gate levels** (the override runs in
 parallel, so the WFA path is still critical), vs 11821 cells / 300 levels for
 the iSLIP+fill version.  Pure WFA (no override) is 2062 cells / 35 levels.
 General traffic is maximal but not maximum-cardinality; mixed-traffic per-port
 RR order remains relaxed.  Single-source and single-destination sequences are
-strict RR (42/42 tests).  The <=40-level target is met at 8x8 (28), 10x10 (36),
-9x11 (37), 11x9 (37); 16x16 is outside this variant's target.
+strict RR (42/42 tests).  The <=40-level target is met at 8x8 (28), 10x10 (35),
+9x11 (37), 11x9 (36); 16x16 is outside this variant's target.
 
 ## Fast vs fair variants
 
@@ -61,8 +61,8 @@ internal scheduling.
 
 | Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
 |---------|-----|-------------------------------------------|-----------------------|-----------|
-| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | WFA statistical (count/coverage) | **5297 cells / 36 levels** |
-| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill; better average Jain | 5503 cells / 74 levels |
+| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | WFA statistical (count/coverage) | **5488 cells / 35 levels** |
+| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill; better average Jain | 5474 cells / 73 levels |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
 Fair variant verification: main regression 295,848 checks PASS; maximality
@@ -166,7 +166,8 @@ python scripts/verify_wfa.py
 ## Synthesize (PPA)
 
 ```
-yosys -s synth/synth.ys        # prints area stats for the sweep
+bash synth/run_synth.sh         # fast: area/depth per shape
+bash synth/run_synth.sh fair    # optional fair variant
 ```
 
 ## Parameters

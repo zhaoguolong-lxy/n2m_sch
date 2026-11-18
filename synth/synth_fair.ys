@@ -1,6 +1,7 @@
 # synth_fair.ys - synthesis / depth for the optional fair variant
 # (iSLIP first pass + WFA fill, rtl/fair_arbiter_fair.v).
-# The fast default is synthesized by synth/synth.ys.
+# The fast default is synthesized by synth/synth.ys.  For reproducible numbers
+# use `bash synth/run_synth.sh fair`, which runs each shape in a fresh process.
 
 read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter_fair.v
 chparam -set N 8 -set M 8 fair_arbiter_fair

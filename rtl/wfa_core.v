@@ -208,8 +208,19 @@ module wfa_core #(
     assign o_grant_flat = match_accept;
 
     generate
-        for (i = 0; i < N; i = i + 1) begin : gen_out_src_vld
-            assign o_src_vld[i] = |(match_accept[i*M +: M]);
+        if (P >= 10) begin : gen_out_src_vld_fused
+            // The final row token is free iff the row never got a grant, so
+            // ~free is exactly the valid bit.  Tapping the token avoids an OR
+            // tree after the last wavefront stage.
+            wire [P-1:0] row_free_final;
+            assign row_free_final = free_stage[P*2*P +: P];
+            for (i = 0; i < N; i = i + 1) begin : gen_sv
+                assign o_src_vld[i] = ~row_free_final[i];
+            end
+        end else begin : gen_out_src_vld
+            for (i = 0; i < N; i = i + 1) begin : gen_out_src_vld_bit
+                assign o_src_vld[i] = |(match_accept[i*M +: M]);
+            end
         end
     endgenerate
 
@@ -227,12 +238,25 @@ module wfa_core #(
     endgenerate
 
     generate
-        for (j = 0; j < M; j = j + 1) begin : gen_out_dest_vld
-            wire [N-1:0] col;
-            for (i = 0; i < N; i = i + 1) begin : gen_out_dest_vld_bit
-                assign col[i] = match_accept[i*M + j];
+        if (P >= 10) begin : gen_out_dest_vld_fused
+            // The final column token is free iff the column never got a grant.
+            // It lives in the rotated space, so apply the same inverse
+            // rotation as the grants before using it.
+            wire [P-1:0] col_free_final;
+            wire [P-1:0] dest_vld_w;
+            assign col_free_final = free_stage[P*2*P + P +: P];
+            assign dest_vld_w = rot_minus(col_free_final, delta);
+            for (j = 0; j < M; j = j + 1) begin : gen_dv
+                assign o_dest_vld[j] = ~dest_vld_w[j];
             end
-            assign o_dest_vld[j] = |col;
+        end else begin : gen_out_dest_vld
+            for (j = 0; j < M; j = j + 1) begin : gen_out_dest_vld_row
+                wire [N-1:0] col;
+                for (i = 0; i < N; i = i + 1) begin : gen_out_dest_vld_bit
+                    assign col[i] = match_accept[i*M + j];
+                end
+                assign o_dest_vld[j] = |col;
+            end
         end
     endgenerate
 

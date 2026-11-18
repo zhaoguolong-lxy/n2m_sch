@@ -65,6 +65,8 @@ module fair_arbiter #(
     );
 
     wire [NM-1:0] wfa_match;
+    wire [N-1:0] wfa_src_vld;
+    wire [M-1:0] wfa_dest_vld;
     generate
         if (N <= M) begin : gen_direct
             for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_req
@@ -75,6 +77,8 @@ module fair_arbiter #(
             for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_grant
                 assign wfa_match[i*M+j] = core_grant[i*M+j];
             end
+            assign wfa_src_vld = core_src_vld;
+            assign wfa_dest_vld = core_dest_vld;
         end else begin : gen_trans
             for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
                 assign core_req[i*MC+j] = i_src_dest_req[j][i];
@@ -83,6 +87,12 @@ module fair_arbiter #(
             assign core_dest_bp = i_src_bp;
             for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_grant
                 assign wfa_match[i*M+j] = core_grant[j*MC+i];
+            end
+            for (i=0;i<N;i=i+1) begin : g_sv_map
+                assign wfa_src_vld[i] = core_dest_vld[i];
+            end
+            for (j=0;j<M;j=j+1) begin : g_dv_map
+                assign wfa_dest_vld[j] = core_src_vld[j];
             end
         end
     endgenerate
@@ -195,11 +205,50 @@ module fair_arbiter #(
     wire [NM-1:0] match_final;
     assign match_final = use_src ? src_ov : (use_dst ? dst_ov : wfa_match);
 
+    localparam FUSE_VLD = ((N >= 10) || (M >= 10));
+
+    // Output-side vld fusion (P >= 10 design point): valid bits are selected
+    // per path after the path's own OR instead of after the full match mux.
+    // src_ov row i = src_any[i] & s_pick_i with s_pick_i one-hot, so its row
+    // OR is exactly src_any; same for dst_ov / dst_any.  Only the two
+    // cross-direction ORs need reduction trees, and wfa_core provides its
+    // vlds from the final free tokens (no post-wavefront OR).
+    //
+    // Under use_src the WFA necessarily grants the only requesting source, so
+    // wfa_src_vld already equals src_any; likewise under use_dst the WFA
+    // grants the only active destination.  That removes one mux level.
+    generate
+        if (FUSE_VLD) begin : gen_vld_fused
+            wire [N-1:0] dst_ov_sv;
+            wire [M-1:0] src_ov_dv;
+            for (i=0;i<N;i=i+1) begin : g_ov_sv
+                assign dst_ov_sv[i] = |(dst_ov[i*M +: M]);
+            end
+            for (j=0;j<M;j=j+1) begin : g_ov_dv
+                wire [N-1:0] cs;
+                for (i=0;i<N;i=i+1) begin : g_col
+                    assign cs[i] = src_ov[i*M+j];
+                end
+                assign src_ov_dv[j] = |cs;
+            end
+            for (i=0;i<N;i=i+1) begin : g_sv
+                assign o_grant_src_vld[i] = use_dst ? dst_ov_sv[i] : wfa_src_vld[i];
+            end
+            for (j=0;j<M;j=j+1) begin : g_dv
+                assign o_grant_dest_vld[j] = use_src ? src_ov_dv[j] : wfa_dest_vld[j];
+            end
+        end
+    endgenerate
+
     // outputs
     assign o_grant_rand_vld = match_final;
-    generate for (i=0;i<N;i=i+1) begin : g_sv
-        assign o_grant_src_vld[i] = |(match_final[i*M +: M]);
-    end endgenerate
+    generate
+        if (!FUSE_VLD) begin : gen_vld_plain_src
+            for (i=0;i<N;i=i+1) begin : g_sv
+                assign o_grant_src_vld[i] = |(match_final[i*M +: M]);
+            end
+        end
+    endgenerate
     generate for (i=0;i<N;i=i+1) begin : g_sp
         for (b=0;b<CWM;b=b+1) begin : g_spb
             wire [M-1:0] terms;
@@ -207,11 +256,15 @@ module fair_arbiter #(
             assign o_grant_src_ptr[i][b] = |terms;
         end
     end endgenerate
-    generate for (j=0;j<M;j=j+1) begin : g_dv
-        wire [N-1:0] col;
-        for (i=0;i<N;i=i+1) assign col[i] = match_final[i*M+j];
-        assign o_grant_dest_vld[j] = |col;
-    end endgenerate
+    generate
+        if (!FUSE_VLD) begin : gen_vld_plain_dst
+            for (j=0;j<M;j=j+1) begin : g_dv
+                wire [N-1:0] col;
+                for (i=0;i<N;i=i+1) assign col[i] = match_final[i*M+j];
+                assign o_grant_dest_vld[j] = |col;
+            end
+        end
+    endgenerate
     generate for (j=0;j<M;j=j+1) begin : g_dp
         for (b=0;b<CWN;b=b+1) begin : g_dpb
             wire [N-1:0] terms;

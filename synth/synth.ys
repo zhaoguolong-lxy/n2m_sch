@@ -10,7 +10,12 @@
 # path (logic depth in mapped gates).  The user-visible target is <= 40 levels
 # for the matching datapath.
 #
-# Usage: yosys -s synth.ys
+# Usage: bash synth/run_synth.sh    (fast, one fresh process per shape)
+#        yosys -s synth/synth.ys   (single-process sweep, +-1 level drift)
+#
+# The reported numbers use run_synth.sh: yosys' auto-index counter keeps
+# growing across `design -reset`, which perturbs ABC mapping and can move the
+# depth by +-1 level inside one process.
 
 # ---------------------------------------------------------------------------
 # 8x8 baseline

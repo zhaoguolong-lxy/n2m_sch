@@ -154,21 +154,22 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| WFA + single-side RR override (fast default) | **28** | **36** | **37** | **37** | out of target |
-| Fair variant: iSLIP first + WFA fill | 60 | 74 | 76 | 75 | out of target |
+| WFA + single-side RR override (fast default) | **28** | **35** | **37** | **36** | out of target |
+| Fair variant: iSLIP first + WFA fill | 60 | 73 | 76 | 78 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
 
-WFA synthesis detail (generic cells, async-reset DFF, `synth/synth.ys`):
+WFA synthesis detail (generic cells, async-reset DFF, `synth/run_synth.sh`;
+each shape runs in a fresh yosys process):
 
 Default WFA + single-side RR override:
 
 | Config | cells | levels |
 |--------|-------|--------|
 | 8x8 | 3051 | 28 |
-| 10x10 | 5297 | 36 |
-| 9x11 | 5210 | 37 |
-| 11x9 | 5190 | 37 |
+| 10x10 | 5488 | 35 |
+| 9x11 | 5427 | 37 |
+| 11x9 | 5394 | 36 |
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -176,7 +177,7 @@ with the WFA, so the critical path is still the WFA path; the area increases
 because the RR selectors and a_ptr/g_ptr are duplicated.
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first pass + WFA fill):
-8x8 3146/60, 10x10 5503/74, 9x11 5332/76, 11x9 5862/75.  It adds the
+8x8 3146/60, 10x10 5474/73, 9x11 5316/76, 11x9 5860/78.  It adds the
 per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
 Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
@@ -189,14 +190,48 @@ is input -> AND -> OR reduction -> δ.  For 10x10 the δ D path drops from the
 wavefront depth (~35 levels) to roughly 10 logic levels; the overall output
 path is unchanged.
 
+Output-side vld fusion (P >= 10): `o_grant_src_vld` / `o_grant_dest_vld` are
+selected per path (single-source override / single-destination override / WFA)
+after the path's own OR, so the `N*M`-bit `match_final` mux is no longer on the
+valid path.  Three further tricks remove the remaining OR trees:
+
+1. `src_ov` row i is `src_any[i] & s_pick_i`, and `s_pick_i` is one-hot
+   (non-zero whenever the row has a request), so the row OR is just `src_any`.
+   The same holds for `dst_ov` / `dst_any`; only the two cross-direction ORs
+   need reduction trees.
+2. `wfa_core` derives `o_src_vld` / `o_dest_vld` from the final free tokens
+   (`~row_free_final`, `~rot_minus(col_free_final, delta)`), which are one gate
+   after the last wavefront stage instead of a full OR tree.  The column token
+   lives in the rotated space, so it reuses the same `rot_minus` structure.
+3. Under `use_src` the WFA necessarily grants the only requesting source, and
+   under `use_dst` it grants the only active destination, so `wfa_src_vld` /
+   `wfa_dest_vld` already equal the override answer on those branches.  That
+   turns the 3:1 output mux into a 2:1 mux.
+
+At 10x10 this takes the source-valid path from 35 to 26 levels and the
+destination-valid path from 34 to 31; the full design goes from 36 to 35
+levels for about +4% cells (the area cost is the duplicated per-path OR /
+select logic).  Fusion is gated off for N < 10 and M < 10, so 8x8 keeps its
+plain path.  9x11 / 11x9 stay within the 40-level target.  The pointer
+encoders are now the critical path (35 levels: matcher + index OR), which is
+inherent to the single-cycle design, so further reduction needs compound
+standard cells or a 2-cycle pipeline.
+
+Generic-gate mapping is sensitive to statement order and ABC heuristics: the
+same logic can move by +-1 level between builds, so treat single-level
+differences as noise.
+
 The WFA numbers are for the wrapper `rtl/fair_arbiter.v` + core `rtl/wfa_core.v`
 (P = max(N,M) torus diagonals, P stages, rotating start).  The current RTL uses
 a log-depth cyclic rotator for delta and an N>M transpose wrapper (pure wiring),
-so 11x9 reuses the 9x11 core.  A parallel single-source/single-destination RR
+so 11x9 reuses the 9x11 core.  Cell/depth numbers come from
+`bash synth/run_synth.sh [fast|fair]`, which runs each shape in a fresh yosys
+process: repeating `design -reset` inside one process perturbs ABC's mapping
+and moves the reported depth by +-1 level.  A parallel single-source/single-destination RR
 override (a_ptr/g_ptr + one RR selector per source and per destination) gives
 strict fairness for the single-side cases; its area is included in the default
-table above.  The override is combinational and parallel to the WFA, so the
-depth is unchanged.
+table above.  The override is combinational and parallel to the WFA, so it
+does not add to the matcher depth.
 
 `8x8`, `10x10`, `9x11` and `11x9` meet the <=40 target; 16x16 is outside this
 variant's target.  The cell itself is 2 gate levels (`G = R & N & W`, token
@@ -205,5 +240,5 @@ maximal but not maximum-cardinality; the exact mixed-traffic per-port RR order
 is relaxed.  Single-source and single-destination sequences are strict RR
 (42/42 tests).
 
-The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels;
-the fair default is 5,200 / 36.  The old iSLIP+fill is 11,821 / 300.
+The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
+default fast variant is 5,488 / 35, and the old iSLIP+fill is 11,821 / 300.

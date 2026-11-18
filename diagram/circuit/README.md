@@ -78,10 +78,10 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 
 | 配置 | cells | 级数 | 状态 |
 |------|-------|------|------|
-| 8x8 | 3051 | **28** | 达标 |
-| 10x10 | 5488 | **35** | 达标 |
-| 9x11 | 5427 | **37** | 达标 |
-| 11x9 | 5394 | **36** | 达标 |
+| 8x8 | 3038 | **27** | 达标 |
+| 10x10 | 5925 | **34** | 达标 |
+| 9x11 | 5847 | **36** | 达标 |
+| 11x9 | 5808 | **36** | 达标 |
 | 16x16 | - | - | 不在本变体目标内 |
 
 纯 WFA（无覆盖）参考：8x8 1181/28，10x10 2062/35，9x11 2029/35，
@@ -91,7 +91,7 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 - 当前实现加入**对数循环旋转器**、**N>M 转置 wrapper**，以及并行的
   **单源/单目的严格 RR 覆盖**（a_ptr/g_ptr + 每端口 RR 选择器）。
 - 旧 iSLIP + 串行 fill：10x10 11821 cells、300 级、80 flops。
-- 默认（WFA + 覆盖）：10x10 5488 cells、35 级；纯 WFA：2062 cells、35 级；
+- 默认（WFA + 覆盖）：10x10 5925 cells、34 级；纯 WFA：2062 cells、35 级；
   fair 变体：5474 cells、73 级；iSLIP+fill：11821 cells、300 级。
 - 8x8 / 10x10 / 9x11 / 11x9 均已 ≤40；11x9 通过 N>M 转置复用 9x11 核心；16x16 不在本变体目标内。
 
@@ -109,7 +109,7 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 - **一般混合流量**：仍走 WFA；保证极大/不浪费，公平性为 WFA 的计数/覆盖公平，
   不是严格的每端口 RR。
 - 覆盖逻辑与 WFA **并行**，`a_ptr/g_ptr` 只在覆盖生效时推进；因此关键路径仍是
-  WFA；输出侧 vld 融合把 src_vld 路径从 35 级降到 26 级（10x10）。
+  WFA；输出侧 vld/ptr 融合把 src_vld 从 35 级降到 26 级，dest_ptr 降到 34 级。
 
 严格测试 `tb/tb_fairness.sv`：7 种形状 × 6 个场景（单源 all/even/odd，
 单目的 all/even/odd）= **42/42 PASS，0 errors**。
@@ -126,7 +126,7 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 10x10 × 20,000 soak PASS（146,021 grants）。
 多源公平的 Jain 平均值比纯 WFA 更高（10x10 持续矩阵：
 src 0.819-0.834 → 0.866-0.895，dst 0.804-0.891 → 0.912-0.934）。代价是
-10x10 73 级 / 5474 cells；fast 默认是 35 级 / 5488 cells。fair 版不是全流量
+10x10 73 级 / 5474 cells；fast 默认是 34 级 / 5925 cells。fair 版不是全流量
 严格 RR 的数学保证，fill-only 端口仍是近似。
 
 ## 7. WFA 全局旋转（对应图 03）

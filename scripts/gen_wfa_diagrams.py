@@ -675,9 +675,9 @@ def d05(path):
     rows = [
         ("旧 iSLIP+fill 10x10", 300, ROSE),
         ("默认 11x9", 36, GREEN),
-        ("默认 9x11", 37, GREEN),
-        ("默认 10x10", 35, GREEN),
-        ("默认 8x8", 28, GREEN),
+        ("默认 9x11", 36, GREEN),
+        ("默认 10x10", 34, GREEN),
+        ("默认 8x8", 27, GREEN),
     ]
     maxv = 300
     for k, (name, val, c) in enumerate(rows):
@@ -692,7 +692,7 @@ def d05(path):
     tx = 300 + 480 * 40 / maxv
     d.wire([(tx, 135), (tx, 500)], ROSE, arrow=False, dash="5,4")
     d.txt(tx + 8, 130, "目标 40", 8.5, ROSE)
-    d.txt(60, 560, "旧设计 300 级 → 默认 28-37 级；10x10 从 300 降到 35。", 9, GREEN)
+    d.txt(60, 560, "旧设计 300 级 → 默认 27-36 级；10x10 从 300 降到 34。", 9, GREEN)
     d.txt(60, 580, "8x8/10x10/9x11/11x9 全部达标；16x16 不在本变体目标内。", 9, GREEN)
 
     # table
@@ -702,10 +702,10 @@ def d05(path):
     for x, h in zip(xs, heads):
         d.txt(x, 136, h, 9, CYAN, weight=600)
     data = [
-        ("8x8", "8", "3051", "28", GREEN),
-        ("10x10", "10", "5488", "35", GREEN),
-        ("9x11", "11", "5427", "37", GREEN),
-        ("11x9", "11", "5394", "36", GREEN),
+        ("8x8", "8", "3038", "27", GREEN),
+        ("10x10", "10", "5925", "34", GREEN),
+        ("9x11", "11", "5847", "36", GREEN),
+        ("11x9", "11", "5808", "36", GREEN),
     ]
     for k, (cfg, p, cells, lv, c) in enumerate(data):
         y = 170 + k * 48
@@ -724,8 +724,8 @@ def d05(path):
     # optimization
     d.region(40, 640, 1420, 230, "目标与结论")
     cards = [
-        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "35 / 28 级", GREEN),
-        ("P = 11（9x11, 11x9）", "36-37 级；11x9 用转置", "已达标", GREEN),
+        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "34 / 27 级", GREEN),
+        ("P = 11（9x11, 11x9）", "36 级；11x9 用转置", "已达标", GREEN),
         ("16x16", "不在本变体目标内", "如需 16x16，改用 2 拍流水 / 分层", MUTED),
     ]
     for k, (t, s1, s2, c) in enumerate(cards):
@@ -927,7 +927,7 @@ def d07(path):
     d.txt(1000, 358, "10x10 5474 / 73", 8.5, TXT)
     d.txt(1000, 378, "9x11  5316 / 76", 8.5, TXT)
     d.txt(1000, 398, "11x9  5860 / 78", 8.5, TXT)
-    d.txt(1000, 430, "对比：fast WFA+override 5488 / 35", 8.5, DIM)
+    d.txt(1000, 430, "对比：fast WFA+override 5925 / 34", 8.5, DIM)
     d.txt(1000, 450, "旧 iSLIP+fill 11821 / 300", 8.5, DIM)
     d.txt(1000, 482, "fair 不是全流量严格 RR：", 8.5, AMBER)
     d.txt(1000, 500, "首轮 per-port RR + fill-only 端口近似；", 8.5, DIM)

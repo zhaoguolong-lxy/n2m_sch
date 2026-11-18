@@ -67,6 +67,8 @@ module fair_arbiter #(
     wire [NM-1:0] wfa_match;
     wire [N-1:0] wfa_src_vld;
     wire [M-1:0] wfa_dest_vld;
+    wire [N-1:0][CWM-1:0] wfa_src_ptr;
+    wire [M-1:0][CWN-1:0] wfa_dest_ptr;
     generate
         if (N <= M) begin : gen_direct
             for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_req
@@ -79,6 +81,8 @@ module fair_arbiter #(
             end
             assign wfa_src_vld = core_src_vld;
             assign wfa_dest_vld = core_dest_vld;
+            assign wfa_src_ptr = core_src_ptr;
+            assign wfa_dest_ptr = core_dest_ptr;
         end else begin : gen_trans
             for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
                 assign core_req[i*MC+j] = i_src_dest_req[j][i];
@@ -93,6 +97,12 @@ module fair_arbiter #(
             end
             for (j=0;j<M;j=j+1) begin : g_dv_map
                 assign wfa_dest_vld[j] = core_src_vld[j];
+            end
+            for (i=0;i<N;i=i+1) begin : g_sp_map
+                assign wfa_src_ptr[i] = core_dest_ptr[i];
+            end
+            for (j=0;j<M;j=j+1) begin : g_dp_map
+                assign wfa_dest_ptr[j] = core_src_ptr[j];
             end
         end
     endgenerate
@@ -134,6 +144,10 @@ module fair_arbiter #(
     reg [N*CWM-1:0] a_ptr;
     reg [M*CWN-1:0] g_ptr;
 
+    // Selected indices, also used by the fused pointer outputs.
+    wire [N*CWM-1:0] ix_s_all;
+    wire [M*CWN-1:0] ix_d_all;
+
     // source single-active override: one RR selector per source, no index mux
     wire [NM-1:0] src_ov;
     generate for (i=0;i<N;i=i+1) begin : g_sov_row
@@ -149,20 +163,20 @@ module fair_arbiter #(
         for (j=0;j<M;j=j+1) begin : g_sov_out
             assign src_ov[i*M+j] = src_any[i] & s_pick_i[j];
         end
-        wire [CWM-1:0] ix_s = idx_m(s_pick_i);
+        assign ix_s_all[i*CWM +: CWM] = idx_m(s_pick_i);
         if (PTR_RESET) begin : ptr_rst
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) a_ptr[i*CWM +: CWM] <= i % M;
                 else if (use_src && src_any[i]) begin
-                    if (ix_s == M-1) a_ptr[i*CWM +: CWM] <= 0;
-                    else a_ptr[i*CWM +: CWM] <= ix_s + 1'b1;
+                    if (ix_s_all[i*CWM +: CWM] == M-1) a_ptr[i*CWM +: CWM] <= 0;
+                    else a_ptr[i*CWM +: CWM] <= ix_s_all[i*CWM +: CWM] + 1'b1;
                 end
             end
         end else begin : ptr_norst
             always @(posedge clk) begin
                 if (use_src && src_any[i]) begin
-                    if (ix_s == M-1) a_ptr[i*CWM +: CWM] <= 0;
-                    else a_ptr[i*CWM +: CWM] <= ix_s + 1'b1;
+                    if (ix_s_all[i*CWM +: CWM] == M-1) a_ptr[i*CWM +: CWM] <= 0;
+                    else a_ptr[i*CWM +: CWM] <= ix_s_all[i*CWM +: CWM] + 1'b1;
                 end
             end
         end
@@ -183,20 +197,20 @@ module fair_arbiter #(
         for (i=0;i<N;i=i+1) begin : g_dov_out
             assign dst_ov[i*M+j] = dst_any[j] & d_pick_j[i];
         end
-        wire [CWN-1:0] ix_d = idx_n(d_pick_j);
+        assign ix_d_all[j*CWN +: CWN] = idx_n(d_pick_j);
         if (PTR_RESET) begin : ptr_rst
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) g_ptr[j*CWN +: CWN] <= j % N;
                 else if (use_dst && dst_any[j]) begin
-                    if (ix_d == N-1) g_ptr[j*CWN +: CWN] <= 0;
-                    else g_ptr[j*CWN +: CWN] <= ix_d + 1'b1;
+                    if (ix_d_all[j*CWN +: CWN] == N-1) g_ptr[j*CWN +: CWN] <= 0;
+                    else g_ptr[j*CWN +: CWN] <= ix_d_all[j*CWN +: CWN] + 1'b1;
                 end
             end
         end else begin : ptr_norst
             always @(posedge clk) begin
                 if (use_dst && dst_any[j]) begin
-                    if (ix_d == N-1) g_ptr[j*CWN +: CWN] <= 0;
-                    else g_ptr[j*CWN +: CWN] <= ix_d + 1'b1;
+                    if (ix_d_all[j*CWN +: CWN] == N-1) g_ptr[j*CWN +: CWN] <= 0;
+                    else g_ptr[j*CWN +: CWN] <= ix_d_all[j*CWN +: CWN] + 1'b1;
                 end
             end
         end
@@ -206,6 +220,23 @@ module fair_arbiter #(
     assign match_final = use_src ? src_ov : (use_dst ? dst_ov : wfa_match);
 
     localparam FUSE_VLD = ((N >= 10) || (M >= 10));
+
+    // Index of the only active source / destination (meaningful when
+    // src_onehot / dst_onehot), used by the fused pointer outputs.
+    wire [CWM-1:0] dst_idx;
+    wire [CWN-1:0] src_idx;
+    generate
+        for (b=0;b<CWM;b=b+1) begin : g_dst_idx
+            wire [M-1:0] t;
+            for (j=0;j<M;j=j+1) assign t[j] = dst_any[j] & ((j>>b) & 1'b1);
+            assign dst_idx[b] = |t;
+        end
+        for (b=0;b<CWN;b=b+1) begin : g_src_idx
+            wire [N-1:0] t;
+            for (i=0;i<N;i=i+1) assign t[i] = src_any[i] & ((i>>b) & 1'b1);
+            assign src_idx[b] = |t;
+        end
+    endgenerate
 
     // Output-side vld fusion (P >= 10 design point): valid bits are selected
     // per path after the path's own OR instead of after the full match mux.
@@ -237,6 +268,30 @@ module fair_arbiter #(
             for (j=0;j<M;j=j+1) begin : g_dv
                 assign o_grant_dest_vld[j] = use_src ? src_ov_dv[j] : wfa_dest_vld[j];
             end
+            // Pointer fusion: the override answer is computed in parallel
+            // (RR index or the single active partner) and the WFA pointer goes
+            // through only one 2:1 select.  The override pointer does not
+            // depend on the matcher, so it settles long before the WFA side.
+            wire ov_sel;
+            assign ov_sel = use_src | use_dst;
+            for (i=0;i<N;i=i+1) begin : g_sp
+                wire [CWM-1:0] ov_ptr;
+                assign ov_ptr = use_src ? ix_s_all[i*CWM +: CWM]
+                                        : ({CWM{dst_ov_sv[i]}} & dst_idx);
+                for (b=0;b<CWM;b=b+1) begin : g_spb
+                    assign o_grant_src_ptr[i][b] =
+                        (wfa_src_ptr[i][b] & ~ov_sel) | (ov_ptr[b] & ov_sel);
+                end
+            end
+            for (j=0;j<M;j=j+1) begin : g_dp
+                wire [CWN-1:0] ov_ptr;
+                assign ov_ptr = use_dst ? ix_d_all[j*CWN +: CWN]
+                                        : ({CWN{src_ov_dv[j]}} & src_idx);
+                for (b=0;b<CWN;b=b+1) begin : g_dpb
+                    assign o_grant_dest_ptr[j][b] =
+                        (wfa_dest_ptr[j][b] & ~ov_sel) | (ov_ptr[b] & ov_sel);
+                end
+            end
         end
     endgenerate
 
@@ -249,13 +304,17 @@ module fair_arbiter #(
             end
         end
     endgenerate
-    generate for (i=0;i<N;i=i+1) begin : g_sp
-        for (b=0;b<CWM;b=b+1) begin : g_spb
-            wire [M-1:0] terms;
-            for (j=0;j<M;j=j+1) assign terms[j] = match_final[i*M+j] & ((j>>b)&1'b1);
-            assign o_grant_src_ptr[i][b] = |terms;
+    generate
+        if (!FUSE_VLD) begin : gen_ptr_plain_src
+            for (i=0;i<N;i=i+1) begin : g_sp
+                for (b=0;b<CWM;b=b+1) begin : g_spb
+                    wire [M-1:0] terms;
+                    for (j=0;j<M;j=j+1) assign terms[j] = match_final[i*M+j] & ((j>>b)&1'b1);
+                    assign o_grant_src_ptr[i][b] = |terms;
+                end
+            end
         end
-    end endgenerate
+    endgenerate
     generate
         if (!FUSE_VLD) begin : gen_vld_plain_dst
             for (j=0;j<M;j=j+1) begin : g_dv
@@ -265,13 +324,17 @@ module fair_arbiter #(
             end
         end
     endgenerate
-    generate for (j=0;j<M;j=j+1) begin : g_dp
-        for (b=0;b<CWN;b=b+1) begin : g_dpb
-            wire [N-1:0] terms;
-            for (i=0;i<N;i=i+1) assign terms[i] = match_final[i*M+j] & ((i>>b)&1'b1);
-            assign o_grant_dest_ptr[j][b] = |terms;
+    generate
+        if (!FUSE_VLD) begin : gen_ptr_plain_dst
+            for (j=0;j<M;j=j+1) begin : g_dp
+                for (b=0;b<CWN;b=b+1) begin : g_dpb
+                    wire [N-1:0] terms;
+                    for (i=0;i<N;i=i+1) assign terms[i] = match_final[i*M+j] & ((i>>b)&1'b1);
+                    assign o_grant_dest_ptr[j][b] = |terms;
+                end
+            end
         end
-    end endgenerate
+    endgenerate
 
 endmodule
 

@@ -107,7 +107,7 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 - **一般混合流量**：仍走 WFA；保证极大/不浪费，公平性为 WFA 的计数/覆盖公平，
   不是严格的每端口 RR。
 - 覆盖逻辑与 WFA **并行**，`a_ptr/g_ptr` 只在覆盖生效时推进；因此关键路径仍是
-  WFA，10x10 保持 35 级。
+  WFA，10x10 保持 36 级（纯 WFA 35 级）。
 
 严格测试 `tb/tb_fairness.sv`：7 种形状 × 6 个场景（单源 all/even/odd，
 单目的 all/even/odd）= **42/42 PASS，0 errors**。

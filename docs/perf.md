@@ -148,7 +148,7 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
 2. **WFA trades matching size for depth**: random square traffic is 81% (4x4),
    86% (8x8), 89% (10x10), 92% (16x16), and 96-100% for N!=M.  The old
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
-   at 10x10 versus 35 for the WFA.
+   at 10x10 versus 36 for the default WFA + override (35 pure WFA).
 
 3. **Depth/area (10x10)**: 5200 cells / 36 levels for the default (WFA + single-side override); pure WFA is 2062/35,
    versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
@@ -162,8 +162,8 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    directions, so a strict 0,1,2,... order on both sides is not preserved.
    This is the documented tradeoff for the depth reduction.
 
-5. **Only 16x16 exceeds the 40-level target**: 8x8 = 28, 10x10 = 35,
-   9x11 = 36, 11x9 = 37 (N>M transpose), 16x16 = 48.  For 16x16 use a 2-cycle
+5. **Only 16x16 exceeds the 40-level target**: 8x8 = 28, 10x10 = 36,
+   9x11 = 36, 11x9 = 37 (N>M transpose), 16x16 = 48 (out of target).  For 16x16 use a 2-cycle
    pipelined wavefront (P/2 = 8 stages per cycle, about 24 levels) or a 4x4
    hierarchical split; a standard-cell AOI library may also lower the generic
    48.  See `docs/ppa.md` and `diagram/circuit/wfa_05_depth.png`.

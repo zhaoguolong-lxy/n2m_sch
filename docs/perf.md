@@ -30,7 +30,10 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
-300 to 35 gate levels and the cell count from 11,821 to 2,062.
+300 to 36 gate levels and the cell count from 11,821 to 5,200 for the default
+WFA + single-side fairness override (2,062 for the pure WFA).  The override is
+only selected in single-source/single-destination traffic; the random/full
+crossbar numbers above are the WFA path and are unchanged.
 
 ## iSLIP reference results (old default)
 
@@ -147,8 +150,10 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
    at 10x10 versus 35 for the WFA.
 
-3. **Depth/area (10x10)**: 2062 cells / 35 levels / 4 flops for the WFA,
-   versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The WFA removes
+3. **Depth/area (10x10)**: 5200 cells / 36 levels for the default (WFA + single-side override); pure WFA is 2062/35,
+   versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
+   the per-source/per-destination RR selectors but runs in parallel; the WFA
+   path stays critical.  The design removes
    the ITER unrolling, the augmenting swap and the serial residual fill.
 
 4. **Fairness is count-fair, not strict-order**: δ rotates every diagonal, so
@@ -158,7 +163,7 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    This is the documented tradeoff for the depth reduction.
 
 5. **Only 16x16 exceeds the 40-level target**: 8x8 = 28, 10x10 = 35,
-   9x11 = 35, 11x9 = 35 (N>M transpose), 16x16 = 48.  For 16x16 use a 2-cycle
+   9x11 = 36, 11x9 = 37 (N>M transpose), 16x16 = 48.  For 16x16 use a 2-cycle
    pipelined wavefront (P/2 = 8 stages per cycle, about 24 levels) or a 4x4
    hierarchical split; a standard-cell AOI library may also lower the generic
    48.  See `docs/ppa.md` and `diagram/circuit/wfa_05_depth.png`.

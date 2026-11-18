@@ -59,8 +59,8 @@ def arrow_label(d, x, y, text, color=DIM, size=8):
 def d00(path):
     d = SVG(1700, 1050)
     d.txt(30, 38, "波前仲裁器（WFA / WWFA）— 总图", 20, TXT, weight=700)
-    d.txt(30, 58, "P = max(N,M) 级对角线波前 · 每级 P 个 crosspoint cell · 单拍输出 · "
-                  "N>M 自动转置 · 唯一状态是旋转起点 δ", 10.5, DIM)
+    d.txt(30, 58, "P = max(N,M) 级对角线波前 · 单拍输出 · N>M 自动转置 · "
+                  "单源/单目的严格 RR 覆盖与 WFA 并行", 10.5, DIM)
 
     # inputs
     d.chip(30, 92, 150, 34, "clk", None, CYAN, title_size=10)
@@ -166,8 +166,9 @@ def d00(path):
     d.txt(1472, 320, "极大性已由波前保证", 8, GREEN)
     d.txt(1472, 334, "此级只做编码/扇出", 7.5, DIM)
     d.txt(1472, 360, "无 iSLIP 迭代、无 augment", 7.5, DIM)
-    d.txt(1472, 374, "无 N 级串行 fill", 7.5, DIM)
-    d.txt(1472, 394, "N>M 时输出转置回 N x M", 7.5, CYAN)
+    d.txt(1472, 374, "单源/单目的 RR 覆盖并行", 7.5, GREEN)
+    d.txt(1472, 394, "final = 覆盖 ? RR pair : WFA", 7.5, CYAN)
+    d.txt(1472, 408, "N>M 时输出转置回 N x M", 7.0, DIM)
 
     # output chips
     outs = [
@@ -211,9 +212,9 @@ def d00(path):
 
     # depth panel
     d.region(30, 700, 680, 300, "深度指标（Yosys generic gate levels）", AMBER)
-    rows = [("8x8", "P=8", "28", GREEN), ("10x10", "P=10", "35", GREEN),
-            ("9x11", "P=11", "35", GREEN), ("11x9", "P=11", "35", GREEN),
-            ("16x16", "P=16", "48", ROSE)]
+    rows = [("8x8", "P=8", "28", GREEN), ("10x10", "P=10", "36", GREEN),
+            ("9x11", "P=11", "36", GREEN), ("11x9", "P=11", "37", GREEN),
+            ("16x16", "P=16", "—", MUTED)]
     d.txt(50, 732, "配置", 9, DIM, weight=600)
     d.txt(190, 732, "P", 9, DIM, weight=600)
     d.txt(300, 732, "级数", 9, DIM, weight=600)
@@ -223,11 +224,15 @@ def d00(path):
         d.txt(50, y, cfg, 11, TXT, weight=600)
         d.txt(190, y, p, 10, DIM)
         d.txt(300, y, lv, 11, c, weight=600)
-        d.txt(430, y, "满足 ≤40" if c == GREEN else "需优化", 9,
-              GREEN if c == GREEN else c)
+        if c == GREEN:
+            d.txt(430, y, "满足 ≤40", 9, GREEN)
+        elif c == MUTED:
+            d.txt(430, y, "非本变体目标", 9, MUTED)
+        else:
+            d.txt(430, y, "需优化", 9, c)
         d.add('<line x1="40" y1="%d" x2="700" y2="%d" stroke="%s" '
               'stroke-width="0.5"/>' % (y + 10, y + 10, MUTED))
-    d.txt(50, 950, "目标线 40：8x8 / 10x10 / 9x11 / 11x9 达标；仅 16x16 超标", 8.5, AMBER)
+    d.txt(50, 950, "目标线 40：8x8 / 10x10 / 9x11 / 11x9 达标；16x16 不在本变体目标内", 8.5, AMBER)
 
     # notes
     d.region(740, 780, 930, 220, "算法要点 / 优化方向", ORANGE)
@@ -663,17 +668,16 @@ def d05(path):
     d = SVG(1500, 900)
     d.txt(30, 38, "深度 / 面积指标与优化方向", 20, TXT, weight=700)
     d.txt(30, 58, "指标：Yosys generic gate levels（ltp -noff），目标 ≤ 40；"
-                  "超标配置必须优化", 10.5, DIM)
+                  "本变体目标 8x8..11x9", 10.5, DIM)
 
     # bar chart
     d.region(40, 100, 800, 500, "逻辑级数（越低越好）")
     rows = [
         ("旧 iSLIP+fill 10x10", 300, ROSE),
-        ("WFA 16x16", 48, ROSE),
-        ("WFA 11x9", 35, GREEN),
-        ("WFA 9x11", 35, GREEN),
-        ("WFA 10x10", 35, GREEN),
-        ("WFA 8x8", 28, GREEN),
+        ("默认 11x9", 37, GREEN),
+        ("默认 9x11", 36, GREEN),
+        ("默认 10x10", 36, GREEN),
+        ("默认 8x8", 28, GREEN),
     ]
     maxv = 300
     for k, (name, val, c) in enumerate(rows):
@@ -688,43 +692,41 @@ def d05(path):
     tx = 300 + 480 * 40 / maxv
     d.wire([(tx, 135), (tx, 500)], ROSE, arrow=False, dash="5,4")
     d.txt(tx + 8, 130, "目标 40", 8.5, ROSE)
-    d.txt(60, 560, "旧设计 300 级 → WFA 28-48 级；10x10 从 300 降到 35。", 9, GREEN)
-    d.txt(60, 580, "8x8/10x10/9x11/11x9 已达标；16x16 需按下方方案继续优化。", 9, AMBER)
+    d.txt(60, 560, "旧设计 300 级 → 默认 28-37 级；10x10 从 300 降到 36。", 9, GREEN)
+    d.txt(60, 580, "8x8/10x10/9x11/11x9 全部达标；16x16 不在本变体目标内。", 9, GREEN)
 
     # table
     d.region(880, 100, 580, 500, "配置明细")
-    heads = ["配置", "P", "cells", "flops", "级数", "状态"]
-    xs = [900, 1000, 1080, 1180, 1270, 1370]
+    heads = ["配置", "P", "cells", "级数", "状态"]
+    xs = [900, 1000, 1090, 1230, 1340]
     for x, h in zip(xs, heads):
         d.txt(x, 136, h, 9, CYAN, weight=600)
     data = [
-        ("8x8", "8", "1181", "3", "28", GREEN),
-        ("10x10", "10", "2062", "4", "35", GREEN),
-        ("9x11", "11", "2029", "4", "35", GREEN),
-        ("11x9", "11", "2029", "4", "35", GREEN),
-        ("16x16", "16", "5261", "4", "48", ROSE),
+        ("8x8", "8", "3012", "28", GREEN),
+        ("10x10", "10", "5200", "36", GREEN),
+        ("9x11", "11", "5170", "36", GREEN),
+        ("11x9", "11", "5151", "37", GREEN),
     ]
-    for k, (cfg, p, cells, ff, lv, c) in enumerate(data):
+    for k, (cfg, p, cells, lv, c) in enumerate(data):
         y = 170 + k * 48
         d.txt(900, y, cfg, 9.5, TXT, weight=600)
         d.txt(1000, y, p, 9, DIM)
-        d.txt(1080, y, cells, 9, DIM)
-        d.txt(1180, y, ff, 9, DIM)
-        d.txt(1270, y, lv, 9.5, c, weight=600)
-        d.txt(1370, y, "达标" if c == GREEN else "优化", 9, c)
+        d.txt(1090, y, cells, 9, DIM)
+        d.txt(1230, y, lv, 9.5, c, weight=600)
+        d.txt(1340, y, "达标" if c == GREEN else "优化", 9, c)
         d.add('<line x1="890" y1="%d" x2="1440" y2="%d" stroke="%s" '
               'stroke-width="0.4"/>' % (y + 12, y + 12, MUTED))
-    d.txt(900, 430, "注：Yosys generic cells / 异步复位 DFF；", 8, DIM)
-    d.txt(900, 446, "P = max(N,M)，含旋转 MUX 与输出编码。", 8, DIM)
+    d.txt(900, 430, "注：Yosys generic cells；默认 = WFA + 单侧 RR 覆盖。", 8, DIM)
+    d.txt(900, 446, "覆盖与 WFA 并行，关键路径仍是 WFA。", 8, DIM)
     d.txt(900, 480, "深度 = 波前 P 级 + 旋转 MUX", 8.5, TXT)
     d.txt(900, 496, "+ 输出编码；无 ITER/fill。", 8.5, TXT)
 
     # optimization
-    d.region(40, 640, 1420, 230, "超标优化方案")
+    d.region(40, 640, 1420, 230, "目标与结论")
     cards = [
-        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "35 / 28 级", GREEN),
-        ("P = 11（9x11, 11x9）", "均 35 级；11x9 用转置", "已达标，无需再优化", GREEN),
-        ("P ≥ 12（16x16）", "48 级，明确超标", "2 拍流水：每拍 P/2 级 ≈ 24 级", ROSE),
+        ("P ≤ 10（8x8, 10x10）", "已 ≤40，保持单拍", "36 / 28 级", GREEN),
+        ("P = 11（9x11, 11x9）", "36-37 级；11x9 用转置", "已达标", GREEN),
+        ("16x16", "不在本变体目标内", "如需 16x16，改用 2 拍流水 / 分层", MUTED),
     ]
     for k, (t, s1, s2, c) in enumerate(cards):
         x = 60 + k * 460
@@ -736,8 +738,122 @@ def d05(path):
         d.txt(x + 16, 796, "取舍：" + ("无" if c == GREEN else
                                       ("latency/面积/连线" if c == ROSE else "少量逻辑重排")),
               8.5, DIM)
-    d.txt(60, 856, "分层方案：16x16 拆成 4 个 4x4 局部 WFA + 二级仲裁，"
-                   "深度约 2×4 级 + 二级，面积换深度。", 8.5, TXT)
+    d.txt(60, 856, "本变体聚焦 8x8..11x9；16x16 留作 2 拍流水 / 4x4 分层扩展。", 8.5, TXT)
+
+    d.render(path, 2.0)
+
+
+
+# ===========================================================================
+# 06 - single-source / single-destination fairness override
+# ===========================================================================
+def d06(path):
+    d = SVG(1500, 920)
+    d.txt(30, 38, "单源 / 单目的严格 RR 覆盖（与 WFA 并行）", 20, TXT, weight=700)
+    d.txt(30, 58, "一般混合流量走 WFA；只有一个源或一个目的有请求时，RR 覆盖严格轮询",
+          10.5, DIM)
+
+    # ---- source side ----
+    d.region(40, 100, 690, 330, "单源：只有一个 src 有请求", CYAN)
+    d.txt(60, 132, "src_any[i] = |eff_req[i][*]   →   src_onehot = (仅一位为 1)",
+          8.5, DIM)
+    # per-source selector (one expanded)
+    d.txt(60, 168, "每个源一个 RR 选择器（图中展开 src i）", 9, CYAN, weight=600)
+    d.chip(60, 190, 120, 50, "a_ptr[i]", "CWM bits", VIOLET, title_size=8.5,
+           sub_size=7.5)
+    d.txt(200, 210, "row_req[i][M]", 8.5, CYAN)
+    d.add('<rect x="200" y="222" width="120" height="34" rx="4" fill="%s" '
+          'stroke="%s"/>' % (FILLS[GREEN], GREEN))
+    d.txt(260, 243, "j >= a_ptr[i]", 8, TXT, "middle")
+    d.txt(335, 243, "mask_hi", 8, GREEN)
+    d.andg(430, 240, 2, GREEN)
+    d.txt(430, 218, "req_hi / req_lo", 8, DIM, "middle")
+    d.add('<rect x="480" y="222" width="120" height="34" rx="4" fill="%s" '
+          'stroke="%s"/>' % (FILLS[AMBER], AMBER))
+    d.txt(540, 243, "lowest_set", 8, TXT, "middle")
+    d.txt(600, 220, "s_pick[i]", 8, AMBER)
+    d.andg(660, 320, 2, GREEN)
+    d.txt(600, 306, "src_any[i]", 8, CYAN, "middle")
+    d.wire([(620, 312), (633, 313)], CYAN, arrow=True)
+    d.wire([(180, 215), (200, 215), (200, 232)], CYAN, arrow=True)
+    d.wire([(320, 239), (403, 239), (403, 233)], GREEN, arrow=True)
+    d.wire([(458, 240), (480, 240)], GREEN, arrow=True)
+    d.wire([(600, 240), (620, 240), (620, 327), (633, 327)], AMBER, arrow=True)
+    d.wire([(688, 320), (710, 320)], GREEN, arrow=True)
+    d.txt(660, 350, "src_ov[i][*]", 8, GREEN, "middle")
+    d.txt(60, 300, "无竞争时：src0 请求 even dests", 8.5, DIM)
+    d.txt(60, 320, "s_pick = 0,2,4,...（指针跳过未请求）", 8.5, GREEN)
+    d.txt(60, 340, "a_ptr ← 匹配目的 +1（仅覆盖生效时）", 8.5, VIOLET)
+    d.txt(60, 370, "源序列严格上升循环，例如 0,2,4,6...", 9, TXT)
+    d.txt(60, 388, "42 项严格测试全部通过", 8.5, GREEN)
+
+    # ---- destination side ----
+    d.region(760, 100, 700, 330, "单目的：只有一个 dst 有请求", AMBER)
+    d.txt(780, 132, "dst_any[j] = |eff_req[*][j]   →   dst_onehot = (仅一位为 1)",
+          8.5, DIM)
+    d.txt(780, 168, "每个目的一个 RR 选择器（图中展开 dst j）", 9, AMBER, weight=600)
+    d.chip(780, 190, 120, 50, "g_ptr[j]", "CWN bits", VIOLET, title_size=8.5,
+           sub_size=7.5)
+    d.txt(920, 210, "col_req[j][N]", 8.5, AMBER)
+    d.add('<rect x="920" y="222" width="120" height="34" rx="4" fill="%s" '
+          'stroke="%s"/>' % (FILLS[GREEN], GREEN))
+    d.txt(980, 243, "i >= g_ptr[j]", 8, TXT, "middle")
+    d.txt(1055, 243, "mask_hi", 8, GREEN)
+    d.andg(1150, 240, 2, GREEN)
+    d.txt(1150, 218, "req_hi / req_lo", 8, DIM, "middle")
+    d.add('<rect x="1200" y="222" width="120" height="34" rx="4" fill="%s" '
+          'stroke="%s"/>' % (FILLS[AMBER], AMBER))
+    d.txt(1260, 243, "lowest_set", 8, TXT, "middle")
+    d.txt(1320, 220, "d_pick[j]", 8, AMBER)
+    d.andg(1380, 320, 2, GREEN)
+    d.txt(1320, 306, "dst_any[j]", 8, AMBER, "middle")
+    d.wire([(1340, 312), (1353, 313)], AMBER, arrow=True)
+    d.wire([(900, 215), (920, 215), (920, 232)], AMBER, arrow=True)
+    d.wire([(1040, 239), (1123, 239), (1123, 233)], GREEN, arrow=True)
+    d.wire([(1178, 240), (1200, 240)], GREEN, arrow=True)
+    d.wire([(1320, 240), (1340, 240), (1340, 327), (1353, 327)], AMBER, arrow=True)
+    d.wire([(1408, 320), (1430, 320)], GREEN, arrow=True)
+    d.txt(1380, 350, "dst_ov[*][j]", 8, GREEN, "middle")
+    d.txt(780, 300, "无竞争时：全部源请求 dest0", 8.5, DIM)
+    d.txt(780, 320, "d_pick = 0,1,2,...（严格上升）", 8.5, GREEN)
+    d.txt(780, 340, "g_ptr ← 匹配源 +1（仅覆盖生效时）", 8.5, VIOLET)
+    d.txt(780, 370, "目的序列严格上升循环，例如 0,1,2,3...", 9, TXT)
+    d.txt(780, 388, "43/42 场景覆盖 all/even/odd", 8.5, GREEN)
+
+    # ---- final mux ----
+    d.region(40, 460, 1420, 190, "最终选择：覆盖与 WFA 并行，关键路径不增加", ORANGE)
+    d.txt(60, 492, "use_src = src_onehot", 9, CYAN)
+    d.txt(60, 512, "use_dst = ~src_onehot & dst_onehot", 9, AMBER)
+    d.mux(400, 520, BLUE)
+    d.txt(400, 556, "use_src", 8.5, CYAN, "middle")
+    d.wire([(70, 512), (368, 512)], CYAN, arrow=True)
+    d.txt(220, 502, "src_ov", 8.5, CYAN, "middle")
+    d.wire([(70, 528), (368, 528)], AMBER, arrow=True)
+    d.txt(220, 546, "dst_ov", 8.5, AMBER, "middle")
+    d.wire([(432, 520), (468, 520)], GREEN, arrow=True)
+    d.txt(450, 510, "ov_match", 8, GREEN, "middle")
+    d.mux(500, 540, BLUE)
+    d.txt(500, 576, "use_src|use_dst", 8, CYAN, "middle")
+    d.wire([(468, 520), (468, 532), (468, 532)], GREEN, arrow=False)
+    d.wire([(468, 532), (468, 532)], GREEN, arrow=False)
+    d.wire([(500, 580), (500, 548)], GREEN, arrow=True)
+    d.txt(500, 598, "wfa_match", 8, DIM, "middle")
+    d.wire([(532, 540), (570, 540)], GREEN, arrow=True)
+    d.txt(610, 540, "match_final", 9, GREEN)
+    d.txt(60, 600, "final = use_src ? src_ov : (use_dst ? dst_ov : wfa_match)", 9,
+          TXT)
+    d.txt(60, 620, "单侧覆盖只在 src_onehot / dst_onehot 时生效；其余流量全部走 WFA。",
+          8.5, DIM)
+
+    # ---- result table ----
+    d.region(40, 680, 1420, 190, "验证结果", GREEN)
+    d.txt(60, 712, "严格公平 42/42：单源 all/even/odd + 单目的 all/even/odd × 7 形状",
+          9, GREEN)
+    d.txt(60, 736, "极大性 18 种 N/M：0 non-max、0 wasted、0 orth", 9, GREEN)
+    d.txt(60, 760, "主回归 22 配置：295,797 checks PASS", 9, GREEN)
+    d.txt(60, 784, "纯 WFA 的全局 δ 旋转只做计数/覆盖公平；单侧 RR 覆盖负责严格顺序。",
+          8.5, DIM)
+    d.txt(60, 812, "混合流量仍走 WFA；单源/单目的公平性由覆盖保证。", 8.5, DIM)
 
     d.render(path, 2.0)
 
@@ -750,4 +866,5 @@ if __name__ == "__main__":
     d03(os.path.join(OUT, "wfa_03_rotation.png"))
     d04(os.path.join(OUT, "wfa_04_nowaste.png"))
     d05(os.path.join(OUT, "wfa_05_depth.png"))
+    d06(os.path.join(OUT, "wfa_06_fairness.png"))
     print("done")

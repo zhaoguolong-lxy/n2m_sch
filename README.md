@@ -5,9 +5,15 @@
 A parameterizable N-to-M fair arbiter: every cycle it produces an orthogonal
 (one-to-one) matching between N sources and M destinations, with rotating
 priority fairness, zero-latency (same-cycle) grant, and source/destination
-backpressure.  The default implementation is the **Wavefront Arbiter
-(WFA/WWFA)**: P=max(N,M) torus diagonals, P combinational stages, and only one
-small rotating-start register.
+backpressure.  The default implementation combines the **Wavefront Arbiter
+(WFA/WWFA)** for general traffic with a parallel **single-source /
+single-destination RR override**:
+- general traffic -> WFA (maximal / no wasted scheduling, low depth);
+- exactly one active source -> a per-source `a_ptr` RR selector chooses the
+  next requested destination, so the source's destination sequence is strict RR;
+- exactly one active destination -> a per-destination `g_ptr` RR selector
+  chooses the next requested source, so the destination's source sequence is
+  strict RR.
 
 **Hard guarantee:** the matching is *maximal* every cycle, for every N and M.
 A requested pair is never left unserved when both its source and its
@@ -20,7 +26,8 @@ pairs and 0 orthogonality violations over 773 cycles each; long randomized soak
 (4 shapes x 1500 cycles with random backpressure, plus 10x10 x 20,000 cycles /
 720,096 request instants) reports 0 non-maximal cycles and 0 invariant
 violations; the WFA algorithm-level script checks 94,475 cases (exhaustive for
-small shapes, every shape 2..16) with 0 failures; reset and X-state checks pass.
+small shapes, every shape 2..16) with 0 failures; the strict single-source /
+single-destination fairness test passes 42/42; reset and X-state checks pass.
 
 ## Detailed circuit-level diagrams (PNG)
 
@@ -34,16 +41,17 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [Priority rotation / fairness](diagram/circuit/wfa_03_rotation.png)
 - [No-waste example](diagram/circuit/wfa_04_nowaste.png)
 - [Depth / area metric](diagram/circuit/wfa_05_depth.png)
+- [Single-source / single-destination fairness override](diagram/circuit/wfa_06_fairness.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
-The default RTL (`rtl/fair_arbiter.v`) is now the WFA implementation; 10x10 maps to 2062 cells / 35 gate levels, vs 11821 cells /
-300 levels for the iSLIP+fill version.  It is maximal (no wasted pair) but not
-maximum-cardinality, and its per-port RR order is relaxed (the two sides rotate
-in opposite directions); see the index for the exact tradeoff.  The <=40-level
-target is met at 8x8/10x10/9x11/11x9; 16x16 is 8 levels over and has a
-documented 2-cycle / hierarchical optimization path.  The RTL uses a
-log-depth cyclic rotator for the delta priority and an N>M transpose wrapper
-(pure wiring), so 11x9 reuses the 9x11 core.
+The default RTL (`rtl/fair_arbiter.v`) is WFA + the single-side fairness
+override; 10x10 maps to **5200 cells / 36 gate levels** (the override runs in
+parallel, so the WFA path is still critical), vs 11821 cells / 300 levels for
+the iSLIP+fill version.  Pure WFA (no override) is 2062 cells / 35 levels.
+General traffic is maximal but not maximum-cardinality; mixed-traffic per-port
+RR order remains relaxed.  Single-source and single-destination sequences are
+strict RR (42/42 tests).  The <=40-level target is met at 8x8 (28), 10x10 (36),
+9x11 (36), 11x9 (37); 16x16 is outside this variant's target.
 
 ## Files
 
@@ -54,6 +62,7 @@ rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)
+tb/tb_fairness.sv       strict single-source / single-destination RR tests
 tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
 scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
@@ -97,7 +106,15 @@ vvp sim/soak.vvp
 vvp sim/soak10.vvp
 ```
 
-Everything (main + maximality + soak + X + throughput + exhaustive check):
+Strict fairness test (single source -> many destinations; many sources ->
+one destination; all/even/odd subsets; 7 shapes):
+
+```
+iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fairness.sv
+vvp sim/fairness.vvp
+```
+
+Everything (main + maximality + soak + fairness + X + throughput + exhaustive check):
 
 ```
 bash sim/run_all.sh

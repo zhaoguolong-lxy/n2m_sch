@@ -1,7 +1,8 @@
 # Fair Arbiter (iSLIP Crossbar Scheduler) - Design & Scheme
 
-> **Note:** the default RTL is now the Wavefront (WFA/WWFA) implementation in
-> `rtl/fair_arbiter.v`; its circuit-level scheme is in
+> **Note:** the default RTL is the Wavefront (WFA/WWFA) implementation plus a
+> parallel single-source/single-destination RR override in `rtl/fair_arbiter.v`;
+> its circuit-level scheme is in
 > [`diagram/circuit/README.md`](../diagram/circuit/README.md).  This document
 > explains the earlier iSLIP + residual-fill reference architecture
 > (`rtl/reference/fair_arbiter_islip.v`) and remains as the detailed comparison.

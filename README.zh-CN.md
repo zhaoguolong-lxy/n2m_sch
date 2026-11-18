@@ -1,10 +1,13 @@
 # 公平仲裁器（波前 / WFA 交叉开关调度器）
 
-参数化的 N 源 × M 目的公平仲裁器：每拍产生一个**正交（一对一）**匹配，**当拍出结果**（零延迟），支持源/目的反压。默认实现是 **Wavefront Arbiter（WFA/WWFA）**：P=max(N,M) 条 torus 对角线、P 级组合波前，唯一状态是一个小的旋转起点寄存器。
+参数化的 N 源 × M 目的公平仲裁器：每拍产生一个**正交（一对一）**匹配，**当拍出结果**（零延迟），支持源/目的反压。默认实现是 **WFA/WWFA + 单源/单目的严格 RR 覆盖**：
+- 一般混合流量 → WFA，保证极大（不浪费调度）、低深度；
+- 只有一个源有请求 → 每源 `a_ptr` RR 选择器覆盖，源的目的序列严格轮询；
+- 只有一个目的有请求 → 每目的 `g_ptr` RR 选择器覆盖，目的的源序列严格轮询。
 
 **硬保证：每拍都是极大匹配（maximal matching），对任意 N/M 都成立。** 只要某个请求 `(i,j)` 的源 i 和目的 j 都空闲却没有被调度，就是错误——本设计不允许这种情况。10x10、9x11、N<M、N>M、非 2 的幂全部覆盖。
 
-**验证汇总**：22 种配置 / 295,797 项检查全部通过；18 种 N/M 形状（2x2 ... 16x16，含 10x10）每种 773 拍，0 非极大拍、0 浪费对、0 正交违规；长跑随机 soak（4 种形状 × 1500 拍带随机反压，另加 10x10 × 20,000 拍 / 720,096 个请求瞬间）0 非极大拍、0 不变量违规；WFA 算法级脚本 94,475 例（小规模穷举 + 2..16 全形状 + 所有 δ）0 失败；复位 / X 态检查通过。
+**验证汇总**：22 种配置 / 295,797 项检查全部通过；18 种 N/M 形状（2x2 ... 16x16，含 10x10）每种 773 拍，0 非极大拍、0 浪费对、0 正交违规；长跑随机 soak（4 种形状 × 1500 拍带随机反压，另加 10x10 × 20,000 拍 / 720,096 个请求瞬间）0 非极大拍、0 不变量违规；WFA 算法级脚本 94,475 例（小规模穷举 + 2..16 全形状 + 所有 δ）0 失败；严格单源/单目的公平测试 **42/42** 通过；复位 / X 态检查通过。
 
 [English](README.md) · [WFA 电路图](diagram/circuit/README.md) · [旧 iSLIP 方案图](diagram/fair_arbiter_scheme.svg)
 
@@ -36,12 +39,10 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [δ 旋转与公平性](diagram/circuit/wfa_03_rotation.png)
 - [不浪费调度示例](diagram/circuit/wfa_04_nowaste.png)
 - [深度 / 面积指标](diagram/circuit/wfa_05_depth.png)
+- [单源/单目的严格 RR 覆盖](diagram/circuit/wfa_06_fairness.png)
 
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
-（`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 2062 cells /
-35 级，而旧 iSLIP+fill 为 11821 cells / 300 级。WFA 是极大匹配（不浪费调度）
-但不是最大匹配，且源/目的 RR 顺序是一升一降的折中；8x8/10x10 满足 ≤40 级，
-16x16 超 8 级，索引文档给出了 2 拍流水 / 分层优化方案。
+（`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 **5200 cells / 36 级**；覆盖逻辑与 WFA 并行，关键路径仍是 WFA。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配，混合流量 per-port RR 顺序仍是 WFA 的计数/覆盖公平；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（28/36/36/37），16x16 不在本变体目标内。
 
 ## 文件结构
 
@@ -52,6 +53,7 @@ rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）
+tb/tb_fairness.sv           严格单源/单目的 RR 测试
 tb/tb_perf.sv               吞吐基准
 tb/tb_x_check.sv            复位 / X 态检查
 scripts/verify_wfa.py       WFA 算法级穷举极大性 / 正交性验证
@@ -94,7 +96,14 @@ vvp sim/soak.vvp
 vvp sim/soak10.vvp
 ```
 
-全套验证（主回归 + 极大性 + soak + X + 性能 + 穷举）：
+严格公平测试（单源多目的 / 单目的多源，all/even/odd，7 种形状）：
+
+```bash
+iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fairness.sv
+vvp sim/fairness.vvp
+```
+
+全套验证（主回归 + 极大性 + soak + 公平 + X + 性能 + 穷举）：
 
 ```bash
 bash sim/run_all.sh

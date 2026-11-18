@@ -10,7 +10,8 @@
 | [wfa_02_diagonal.png](wfa_02_diagonal.png) | 分图：P 条对角线如何组成 P 级阵列，级内并行、级间传 token |
 | [wfa_03_rotation.png](wfa_03_rotation.png) | 分图：δ 旋转、P 路 MUX、源/目的公平性时序 |
 | [wfa_04_nowaste.png](wfa_04_nowaste.png) | 分图：“不浪费调度”的判定公式与 S1/S2/S3 例子 |
-| [wfa_05_depth.png](wfa_05_depth.png) | 分图：逻辑级数 / 面积指标，>40 级的优化方案 |
+| [wfa_05_depth.png](wfa_05_depth.png) | 分图：逻辑级数 / 面积指标 |
+| [wfa_06_fairness.png](wfa_06_fairness.png) | 分图：单源 / 单目的严格 RR 覆盖（与 WFA 并行） |
 
 ## 1. 为什么选 wavefront
 
@@ -72,26 +73,46 @@ error <=> exists (i,j):
 
 Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码：
 
-| 配置 | P | cells | flops | 级数 | 状态 |
-|------|---|-------|-------|------|------|
-| 8x8 | 8 | 1181 | 3 | **28** | 达标 |
-| 10x10 | 10 | 2062 | 4 | **35** | 达标 |
-| 9x11 | 11 | 2029 | 4 | **35** | 达标 |
-| 11x9 | 11 | 2029 | 4 | **35** | 达标（转置） |
-| 16x16 | 16 | 5261 | 4 | 48 | 超标 8 级 |
+默认 WFA + 单源/单目的 RR 覆盖：
 
-- 当前实现加入**对数循环旋转器**（δ 的 P*logP MUX/行，替代运行时取模 + 逐位
-  P 路 MUX）和 **N>M 转置 wrapper**（核心始终 Nc=min、Mc=max，转置是纯连线）。
+| 配置 | cells | 级数 | 状态 |
+|------|-------|------|------|
+| 8x8 | 3012 | **28** | 达标 |
+| 10x10 | 5200 | **36** | 达标 |
+| 9x11 | 5170 | **36** | 达标 |
+| 11x9 | 5151 | **37** | 达标 |
+| 16x16 | - | - | 不在本变体目标内 |
+
+纯 WFA（无覆盖）参考：8x8 1181/28，10x10 2062/35，9x11 2029/35，
+11x9 2029/35，16x16 5261/48。单侧 RR 覆盖与 WFA 并行，面积增加但关键路径
+仍是 WFA。
+
+- 当前实现加入**对数循环旋转器**、**N>M 转置 wrapper**，以及并行的
+  **单源/单目的严格 RR 覆盖**（a_ptr/g_ptr + 每端口 RR 选择器）。
 - 旧 iSLIP + 串行 fill：10x10 11821 cells、300 级、80 flops。
-- WFA：10x10 2062 cells、35 级、4 flops；**面积约 1/3，级数约 1/8**。
-- 8x8 / 10x10 / 9x11 / 11x9 均已 ≤40；11x9 通过 N>M 转置复用 9x11 核心。
-- 16x16 超 8 级，建议 2 拍流水（每拍 P/2 级，约 24 级）或 4x4 分层
-  （局部 WFA + 二级仲裁），代价是 latency 或连线/面积。
+- 默认（WFA + 覆盖）：10x10 5200 cells、36 级；纯 WFA：2062 cells、35 级；**面积约 1/3，级数约 1/8**。
+- 8x8 / 10x10 / 9x11 / 11x9 均已 ≤40；11x9 通过 N>M 转置复用 9x11 核心；16x16 不在本变体目标内。
 
 > 说明：这里统计的是 Yosys generic gate 映射。真实标准单元库若有 AOI21/OAI21
 > 复合门，cell 的“token 更新”可压到 1 级，实际级数会更低。
 
-## 5. 公平性取舍（对应图 03）
+## 5. 公平性（对应图 03 / 06）
+
+默认 RTL 在 WFA 之外并联了一个**单源 / 单目的严格 RR 覆盖**：
+
+- **只有一个源有请求**：每源 `a_ptr[i]` 选择“从指针开始第一个被请求的目的”，
+  覆盖 WFA 的选择；源的获授目的序列严格轮询（all/even/odd 子集都正确）。
+- **只有一个目的有请求**：每目的 `g_ptr[j]` 选择“从指针开始第一个被请求的源”，
+  覆盖 WFA 的选择；目的的获授源序列严格轮询。
+- **一般混合流量**：仍走 WFA；保证极大/不浪费，公平性为 WFA 的计数/覆盖公平，
+  不是严格的每端口 RR。
+- 覆盖逻辑与 WFA **并行**，`a_ptr/g_ptr` 只在覆盖生效时推进；因此关键路径仍是
+  WFA，10x10 保持 35 级。
+
+严格测试 `tb/tb_fairness.sv`：7 种形状 × 6 个场景（单源 all/even/odd，
+单目的 all/even/odd）= **42/42 PASS，0 errors**。
+
+## 6. WFA 全局旋转（对应图 03）
 
 δ 是唯一状态，每个 grant 后 `δ ← δ+1 mod P`。P 个周期覆盖所有对角线，
 每个源、每个目的都轮获得最高优先级。
@@ -109,6 +130,10 @@ WFA 能保证**计数公平**（每 P 拍每端口各 1 次）和**无饥饿**�
 ```bash
 # 只生成 PNG（内部用 SVG 模型渲染，不落地 SVG 文件）
 python scripts/gen_wfa_diagrams.py
+
+# 严格单源/单目的公平（42 项）
+iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fairness.sv
+vvp sim/fairness.vvp
 
 # 极大性检查（18 种 N/M 形状）
 iverilog -g2012 -s tb_maximal_top -o sim/torus_max.vvp \

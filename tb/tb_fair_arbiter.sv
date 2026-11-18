@@ -124,6 +124,8 @@ module tb_core #(
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
             $deposit(dut.u_core.delta, '0);
+            $deposit(dut.a_ptr, '0);
+            $deposit(dut.g_ptr, '0);
         end
     endtask
 

@@ -42,6 +42,7 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [No-waste example](diagram/circuit/wfa_04_nowaste.png)
 - [Depth / area metric](diagram/circuit/wfa_05_depth.png)
 - [Single-source / single-destination fairness override](diagram/circuit/wfa_06_fairness.png)
+- [Fair variant: iSLIP first pass + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
 The default RTL (`rtl/fair_arbiter.v`) is WFA + the single-side fairness
@@ -53,24 +54,58 @@ RR order remains relaxed.  Single-source and single-destination sequences are
 strict RR (42/42 tests).  The <=40-level target is met at 8x8 (28), 10x10 (36),
 9x11 (36), 11x9 (37); 16x16 is outside this variant's target.
 
+## Fast vs fair variants
+
+Both variants have the same required top-level interface; they differ only in
+internal scheduling.
+
+| Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
+|---------|-----|-------------------------------------------|-----------------------|-----------|
+| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | WFA statistical (count/coverage) | **5200 cells / 36 levels** |
+| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill; better average Jain | 5406 cells / 74 levels |
+| strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
+
+Fair variant verification: main regression 295,848 checks PASS; maximality
+18/18 (0 non-max / 0 wasted); 4-shape soak x 1500 PASS; strict fairness 42/42.
+Its multi-source Jain averages (10x10 model, 3000-cycle
+persistent patterns): pure WFA src 0.819-0.834 / dst 0.804-0.891; fair src
+0.866-0.895 / dst 0.912-0.934.  Full crossbar is 1.000 for both.  The fair
+variant is not a mathematical all-traffic RR guarantee (fill-only ports are
+approximate), but it is the best single-cycle compromise; more iSLIP iterations
+or the strict reference cost more depth.
+
+Run the fair variant:
+
+```
+iverilog -g2012 -DFAIR_DUT -s tb_top -o sim/sim_fair.vvp     rtl/wfa_core.v rtl/fair_arbiter_fair.v tb/tb_fair_arbiter.sv
+vvp sim/sim_fair.vvp
+
+iverilog -g2012 -s tb_fairness_fair_top -o sim/fairness_fair.vvp     rtl/wfa_core.v rtl/fair_arbiter_fair.v tb/tb_fairness_fair.sv
+vvp sim/fairness_fair.vvp
+```
+
 ## Files
 
 ```
 rtl/fair_arbiter.v      top-level WFA wrapper (exact required ports; N,M,PTR_RESET)
 rtl/wfa_core.v          internal P-stage wavefront core (flat internal interface)
+rtl/fair_arbiter_fair.v optional fair variant (iSLIP first pass + WFA fill)
 rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)
-tb/tb_fairness.sv       strict single-source / single-destination RR tests
+tb/tb_fairness.sv       strict fairness tests for the fast variant
+tb/tb_fairness_fair.sv  strict fairness tests for the fair variant
 tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
 scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
+scripts/fairness_compare.py  multi-source Jain model: fast vs fair
 scripts/verify_maximal.py  same check for the old iSLIP+fill reference
 sim/run_sim.sh          compile + run wrapper (optional)
 sim/run_all.sh          full verification suite (all of the above)
 synth/synth.ys          Yosys synthesis + depth/area sweep (WFA)
 synth/synth_islip.ys    synthesis sweep for the iSLIP reference
+synth/synth_fair.ys     synthesis / depth sweep for the fair variant
 docs/scheme.md          design + scheme diagram
 docs/testpoints.md      test point matrix + results
 docs/ppa.md             synthesis / PPA results

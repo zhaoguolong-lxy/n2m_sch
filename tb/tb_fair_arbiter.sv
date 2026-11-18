@@ -77,7 +77,11 @@ module tb_core #(
     logic [M-1:0]            o_dest_vld;
     logic [M*CW_N-1:0]       o_dest_ptr; // flat: dest m at [m*CW_N +: CW_N]
 
+`ifdef FAIR_DUT
+    fair_arbiter_fair #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
+`else
     fair_arbiter #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
+`endif
         .clk              (clk),
         .rst_n            (rst_n),
         .i_src_dest_req   (i_req),
@@ -123,7 +127,11 @@ module tb_core #(
     //-------------------------------------------------------------------------
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
+`ifdef FAIR_DUT
+            $deposit(dut.u_fill.delta, '0);
+`else
             $deposit(dut.u_core.delta, '0);
+`endif
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);
         end

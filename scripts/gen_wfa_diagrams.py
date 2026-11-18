@@ -858,6 +858,87 @@ def d06(path):
     d.render(path, 2.0)
 
 
+
+# ===========================================================================
+# 07 - fair variant: iSLIP first pass + WFA fill
+# ===========================================================================
+def d07(path):
+    d = SVG(1500, 900)
+    d.txt(30, 38, "Fair variant：iSLIP 首轮 + WFA fill", 20, TXT, weight=700)
+    d.txt(30, 58, "可选 fair 模式：首轮负责每端口 RR，WFA 只填残差；保证极大/不浪费",
+          10.5, DIM)
+
+    # first pass row
+    d.chip(40, 120, 150, 56, "eff_req", "N x M", CYAN, title_size=10)
+    d.region(220, 100, 560, 160, "iSLIP 首轮：每端口 a_ptr / g_ptr", GREEN)
+    d.chip(240, 130, 220, 76, "GRANT  M x RR-N", "g_ptr[j] 轮询源", GREEN,
+           title_size=9.5)
+    d.chip(510, 130, 220, 76, "ACCEPT  N x RR-M", "a_ptr[i] 轮询目的", GREEN,
+           title_size=9.5)
+    d.wire([(190, 148), (240, 148)], ORANGE, bus=True, arrow=True)
+    d.wire([(460, 168), (510, 168)], GREEN, arrow=True)
+    d.txt(488, 158, "grant", 8, DIM, "middle")
+    d.chip(820, 130, 170, 56, "first_match", "正交", GREEN, title_size=9.5)
+    d.wire([(730, 168), (820, 168)], GREEN, bus=True, arrow=True)
+    # register icons
+    d.chip(240, 216, 100, 32, "g_ptr", None, VIOLET, title_size=8.5)
+    d.chip(510, 216, 100, 32, "a_ptr", None, VIOLET, title_size=8.5)
+    d.txt(60, 280, "g_ptr/a_ptr：首轮/最终匹配推进", 8, VIOLET)
+
+    # residual row
+    d.chip(40, 350, 190, 70, "src_match / dst_match", "OR 行/列", GREEN,
+           title_size=8.5)
+    d.chip(280, 350, 190, 70, "res_req", "eff & ~src & ~dst", AMBER,
+           title_size=9.5)
+    d.chip(520, 330, 300, 110, "WFA fill", "P 级 torus 对角线；只处理残差", GREEN,
+           title_size=10)
+    d.chip(600, 450, 100, 34, "δ", None, VIOLET, title_size=8.5)
+    d.chip(860, 350, 170, 70, "fill_match", "极大 fill", GREEN, title_size=9.5)
+    d.wire([(230, 385), (280, 385)], GREEN, arrow=True)
+    d.wire([(470, 385), (520, 385)], AMBER, bus=True, arrow=True)
+    d.wire([(820, 385), (860, 385)], GREEN, bus=True, arrow=True)
+    d.wire([(820, 168), (820, 300)], GREEN, arrow=False)
+    d.dot(820, 300, GREEN)
+    d.wire([(820, 300), (20, 300), (20, 385), (40, 385)], GREEN, arrow=True)
+    d.wire([(820, 300), (820, 615), (300, 615)], GREEN, arrow=True)
+    d.tag(500, 292, "first_match", GREEN)
+
+    # merge and pointers
+    d.region(220, 560, 700, 150, "合并 / 指针更新", ORANGE)
+    d.chip(300, 600, 100, 60, "OR", "first | fill", GREEN, title_size=9)
+    d.wire([(945, 385), (945, 655), (300, 655)], GREEN, arrow=True)
+    d.chip(440, 610, 160, 54, "match_final", None, GREEN, title_size=9.5)
+    d.wire([(400, 640), (440, 640)], GREEN, arrow=True)
+    d.chip(620, 600, 260, 74, "a_ptr / g_ptr 更新", "final match -> +1", VIOLET,
+           title_size=9)
+    d.wire([(600, 640), (620, 640)], GREEN, arrow=True)
+
+    # table / notes
+    d.region(980, 100, 480, 610, "对比与验证", CYAN)
+    d.txt(1000, 140, "严格单源/单目的 42/42 PASS", 9, GREEN)
+    d.txt(1000, 164, "fair 主回归 295,848 checks PASS", 9, GREEN)
+    d.txt(1000, 188, "极大性 18/18；4 形状 soak PASS", 9, GREEN)
+    d.txt(1000, 220, "多源 Jain 平均（10x10）", 9, CYAN, weight=600)
+    d.txt(1000, 244, "        纯 WFA      fair", 8.5, DIM)
+    d.txt(1000, 264, "src     0.819-0.834  0.866-0.895", 8.5, TXT)
+    d.txt(1000, 284, "dst     0.804-0.891  0.912-0.934", 8.5, TXT)
+    d.txt(1000, 314, "PPA（flatten，generic）", 9, CYAN, weight=600)
+    d.txt(1000, 338, "8x8   3107 / 60", 8.5, TXT)
+    d.txt(1000, 358, "10x10 5406 / 74", 8.5, TXT)
+    d.txt(1000, 378, "9x11  5307 / 74", 8.5, TXT)
+    d.txt(1000, 398, "11x9  5781 / 77", 8.5, TXT)
+    d.txt(1000, 430, "对比：fast WFA+override 5200 / 36", 8.5, DIM)
+    d.txt(1000, 450, "旧 iSLIP+fill 11821 / 300", 8.5, DIM)
+    d.txt(1000, 482, "fair 不是全流量严格 RR：", 8.5, AMBER)
+    d.txt(1000, 500, "首轮 per-port RR + fill-only 端口近似；", 8.5, DIM)
+    d.txt(1000, 518, "混合流量比纯 WFA 更公平，但非数学保证。", 8.5, DIM)
+    d.txt(1000, 550, "默认仍是 fast WFA+override；", 8.5, TXT)
+    d.txt(1000, 568, "fair 通过 -DFAIR_DUT 选择。", 8.5, TXT)
+    d.txt(1000, 600, "16x16 不在本变体目标内。", 8.5, MUTED)
+
+    d.render(path, 2.0)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     d00(os.path.join(OUT, "wfa_00_overview.png"))
@@ -867,4 +948,5 @@ if __name__ == "__main__":
     d04(os.path.join(OUT, "wfa_04_nowaste.png"))
     d05(os.path.join(OUT, "wfa_05_depth.png"))
     d06(os.path.join(OUT, "wfa_06_fairness.png"))
+    d07(os.path.join(OUT, "wfa_07_fair_hybrid.png"))
     print("done")

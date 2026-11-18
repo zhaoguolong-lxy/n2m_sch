@@ -28,6 +28,10 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 | 9x11 | 9 | 0 | 9.00/9 (100%) | 8.61/9 (96%) |
 | 11x9 | 9 | 0 | 9.00/9 (100%) | 8.67/9 (96%) |
 
+Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first + WFA fill): 10x10
+first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The fast default is
+8.95/10 (89%) at depth 36.
+
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
 300 to 36 gate levels and the cell count from 11,821 to 5,200 for the default

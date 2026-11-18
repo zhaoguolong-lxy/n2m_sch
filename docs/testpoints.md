@@ -97,8 +97,13 @@ The iSLIP reference model is still checked by `scripts/verify_maximal.py`
 ### Dimension I: strict single-source / single-destination fairness
 | ID | Scenario | Checks |
 |----|----------|--------|
-| I1 | `tb/tb_fairness.sv` single source -> many destinations | all/even/odd subsets, 7 shapes; granted destination sequence is ascending cyclic RR, ptr matches |
-| I2 | `tb/tb_fairness.sv` many sources -> one destination | all/even/odd subsets, 7 shapes; granted source sequence is ascending cyclic RR, ptr matches |
+| I1 | `tb/tb_fairness.sv` / `tb/tb_fairness_fair.sv` single source -> many destinations | all/even/odd subsets, 7 shapes; granted destination sequence is ascending cyclic RR, ptr matches |
+| I2 | same TBs, many sources -> one destination | all/even/odd subsets, 7 shapes; granted source sequence is ascending cyclic RR, ptr matches |
+
+Both fast and fair RTL pass **42/42** strict checks.  The fair variant
+(`rtl/fair_arbiter_fair.v`) adds an iSLIP first pass before the WFA fill for
+better multi-source fairness; the fast default uses the parallel single-side
+override only.
 
 The default RTL uses a WFA core plus a parallel single-source /
 single-destination RR override (`a_ptr`/`g_ptr`).  General mixed traffic stays
@@ -120,7 +125,9 @@ is an error.  `tb_maximal.sv` also checks orthogonality and that
 
 Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 22 configurations
 passed; total 295,797 checks, 0 errors.  Strict single-source/single-destination
-fairness (`tb_fairness.sv`) passes **42/42 with 0 errors**.  The source/protocol checks are
+fairness (`tb_fairness.sv` and `tb_fairness_fair.sv`) passes **42/42 with 0
+errors** on both variants.  The fair-variant main regression is **295,848
+checks, 0 errors**.  The source/protocol checks are
 the same as before; S4-S7 now check cyclic coverage/count fairness rather than
 a strict ascending order, which is the documented WFA tradeoff.
 
@@ -149,7 +156,23 @@ a strict ascending order, which is the documented WFA tradeoff.
 | cfg_10x10_noswap | PASS | 16901 |
 | cfg_8x8_noswap | PASS | 13522 |
 | **Total (22 configs)** | **ALL PASS** | **295797** |
-| Strict fairness (7 shapes x 6 cases) | **42/42 PASS** | 0 errors |
+| Strict fairness, fast (7 shapes x 6 cases) | **42/42 PASS** | 0 errors |
+| Strict fairness, fair (7 shapes x 6 cases) | **42/42 PASS** | 0 errors |
+| Fair-variant main regression (22 configs) | **ALL PASS** | 295,848 |
+| Fair-variant maximality (18 shapes) | **18/18 PASS** | 0 non-max / 0 wasted |
+| Fair-variant soak (4 shapes x 1500) | **PASS** | 0 violations |
+
+Multi-source fairness model (`scripts/fairness_compare.py`, 10x10, 3000-cycle
+persistent patterns):
+
+| Scheme | src Jain avg | dst Jain avg |
+|--------|--------------|--------------|
+| pure WFA | 0.819-0.834 | 0.804-0.891 |
+| iSLIP first + WFA fill | **0.866-0.895** | **0.912-0.934** |
+
+Full crossbar is 1.000 for both.  The fair variant is a better multi-source
+compromise, but not a strict all-traffic RR guarantee (fill-only ports are
+approximate).
 
 The added 8x9 / 9x9 / 9x11 / 11x9 / 7x11 / 15x15 configs exercise the
 `$clog2` width transitions just above/below power-of-two (8->9, 15->16) and

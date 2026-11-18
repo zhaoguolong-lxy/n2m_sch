@@ -154,7 +154,8 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| WFA + single-side RR override (default) | **28** | **36** | **36** | **37** | out of target |
+| WFA + single-side RR override (fast default) | **28** | **36** | **36** | **37** | out of target |
+| Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 77 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
 
@@ -173,6 +174,11 @@ Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
 with the WFA, so the critical path is still the WFA path; the area increases
 because the RR selectors and a_ptr/g_ptr are duplicated.
+
+Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first pass + WFA fill):
+8x8 3107/60, 10x10 5406/74, 9x11 5307/74, 11x9 5781/77.  It adds the
+per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
+Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
 The WFA numbers are for the wrapper `rtl/fair_arbiter.v` + core `rtl/wfa_core.v`
 (P = max(N,M) torus diagonals, P stages, rotating start).  The current RTL uses

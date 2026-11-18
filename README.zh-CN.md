@@ -40,23 +40,53 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [不浪费调度示例](diagram/circuit/wfa_04_nowaste.png)
 - [深度 / 面积指标](diagram/circuit/wfa_05_depth.png)
 - [单源/单目的严格 RR 覆盖](diagram/circuit/wfa_06_fairness.png)
+- [fair 变体：iSLIP 首轮 + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
 （`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 **5200 cells / 36 级**；覆盖逻辑与 WFA 并行，关键路径仍是 WFA。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配，混合流量 per-port RR 顺序仍是 WFA 的计数/覆盖公平；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（28/36/36/37），16x16 不在本变体目标内。
+
+## fast / fair 两个版本
+
+两个版本的顶层接口完全一致，只是内部调度不同。
+
+| 版本 | RTL | 单源/单目的严格 RR | 多源公平 | 10x10 PPA |
+|------|-----|--------------------|----------|-----------|
+| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | WFA 统计公平（计数/覆盖） | **5200 cells / 36 级** |
+| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill，平均 Jain 更高 | 5406 cells / 74 级 |
+| 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
+
+fair 版验证：主回归 295,848 checks PASS；极大性 18/18；4 形状 soak × 1500
+PASS；严格公平 42/42。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
+0.819-0.834 / dst 0.804-0.891；fair src 0.866-0.895 / dst 0.912-0.934。
+全交叉开关两者都是 1.000。fair 版不是“全流量严格 RR”的数学保证
+（fill-only 端口是近似），但它是当前单拍下最好的折中。
+
+运行 fair 版：
+
+```bash
+iverilog -g2012 -DFAIR_DUT -s tb_top -o sim/sim_fair.vvp     rtl/wfa_core.v rtl/fair_arbiter_fair.v tb/tb_fair_arbiter.sv
+vvp sim/sim_fair.vvp
+
+iverilog -g2012 -s tb_fairness_fair_top -o sim/fairness_fair.vvp     rtl/wfa_core.v rtl/fair_arbiter_fair.v tb/tb_fairness_fair.sv
+vvp sim/fairness_fair.vvp
+```
 
 ## 文件结构
 
 ```
 rtl/fair_arbiter.v          顶层 WFA wrapper（原始接口不变；N、M、PTR_RESET）
 rtl/wfa_core.v              内部 P 级波前核心（内部扁平接口）
+rtl/fair_arbiter_fair.v    可选 fair 版（iSLIP 首轮 + WFA fill）
 rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）
-tb/tb_fairness.sv           严格单源/单目的 RR 测试
+tb/tb_fairness.sv           严格公平测试（fast 版）
+tb/tb_fairness_fair.sv      严格公平测试（fair 版）
 tb/tb_perf.sv               吞吐基准
 tb/tb_x_check.sv            复位 / X 态检查
 scripts/verify_wfa.py       WFA 算法级穷举极大性 / 正交性验证
+scripts/fairness_compare.py  多源 Jain 模型：fast vs fair
 scripts/verify_maximal.py   旧 iSLIP+fill 参考实现的同类验证
 diagram/circuit/            WFA 电路级 PNG 方案图（总 / 分）
 diagram/                    旧 iSLIP 方案图 + 算法动画（SVG）
@@ -65,6 +95,7 @@ docs/testpoints.md          测试点分解与结果
 docs/ppa.md                 综合 / PPA 报告
 synth/synth.ys              Yosys 综合 / 深度扫描（WFA）
 synth/synth_islip.ys        旧 iSLIP 参考实现的综合扫描
+synth/synth_fair.ys         fair 变体的综合 / 深度扫描
 sim/run_sim.sh              Icarus 仿真脚本
 sim/run_all.sh              全套验证（主回归 + 极大性 + X 检查 + 性能 + 穷举）
 ```

@@ -12,6 +12,7 @@
 | [wfa_04_nowaste.png](wfa_04_nowaste.png) | 分图：“不浪费调度”的判定公式与 S1/S2/S3 例子 |
 | [wfa_05_depth.png](wfa_05_depth.png) | 分图：逻辑级数 / 面积指标 |
 | [wfa_06_fairness.png](wfa_06_fairness.png) | 分图：单源 / 单目的严格 RR 覆盖（与 WFA 并行） |
+| [wfa_07_fair_hybrid.png](wfa_07_fair_hybrid.png) | 分图：fair 变体（iSLIP 首轮 + WFA fill） |
 
 ## 1. 为什么选 wavefront
 
@@ -90,7 +91,8 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 - 当前实现加入**对数循环旋转器**、**N>M 转置 wrapper**，以及并行的
   **单源/单目的严格 RR 覆盖**（a_ptr/g_ptr + 每端口 RR 选择器）。
 - 旧 iSLIP + 串行 fill：10x10 11821 cells、300 级、80 flops。
-- 默认（WFA + 覆盖）：10x10 5200 cells、36 级；纯 WFA：2062 cells、35 级；**面积约 1/3，级数约 1/8**。
+- 默认（WFA + 覆盖）：10x10 5200 cells、36 级；纯 WFA：2062 cells、35 级；
+  fair 变体：5406 cells、74 级；iSLIP+fill：11821 cells、300 级。
 - 8x8 / 10x10 / 9x11 / 11x9 均已 ≤40；11x9 通过 N>M 转置复用 9x11 核心；16x16 不在本变体目标内。
 
 > 说明：这里统计的是 Yosys generic gate 映射。真实标准单元库若有 AOI21/OAI21
@@ -112,7 +114,21 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 严格测试 `tb/tb_fairness.sv`：7 种形状 × 6 个场景（单源 all/even/odd，
 单目的 all/even/odd）= **42/42 PASS，0 errors**。
 
-## 6. WFA 全局旋转（对应图 03）
+## 6. Fair 变体（对应图 07）
+
+`rtl/fair_arbiter_fair.v` 是独立的可选 fair 版：
+
+1. iSLIP 首轮 grant/accept：每目的 `g_ptr`、每源 `a_ptr` 做 per-port RR；
+2. 对未匹配残差跑 WFA fill：保证极大/不浪费；
+3. `a_ptr/g_ptr` 在最终匹配上推进。
+
+严格单源/单目的 42/42；fair 主回归 295,848，极大性 18/18，4 形状 soak PASS。
+多源公平的 Jain 平均值比纯 WFA 更高（10x10 持续矩阵：
+src 0.819-0.834 → 0.866-0.895，dst 0.804-0.891 → 0.912-0.934）。代价是
+10x10 74 级 / 5406 cells；fast 默认是 36 级 / 5200 cells。fair 版不是全流量
+严格 RR 的数学保证，fill-only 端口仍是近似。
+
+## 7. WFA 全局旋转（对应图 03）
 
 δ 是唯一状态，每个 grant 后 `δ ← δ+1 mod P`。P 个周期覆盖所有对角线，
 每个源、每个目的都轮获得最高优先级。

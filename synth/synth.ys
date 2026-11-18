@@ -15,7 +15,7 @@
 # ---------------------------------------------------------------------------
 # 8x8 baseline
 # ---------------------------------------------------------------------------
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 8 -set M 8 fair_arbiter
 synth -top fair_arbiter
 flatten
@@ -26,7 +26,7 @@ ltp -noff
 # 10x10 (explicitly requested N=M=10 case)
 # ---------------------------------------------------------------------------
 design -reset
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 10 -set M 10 fair_arbiter
 synth -top fair_arbiter
 flatten
@@ -38,7 +38,7 @@ write_verilog -noattr synth/fair_arbiter_10x10_wfa.v
 # 9x11 / 11x9: rectangular, P=11
 # ---------------------------------------------------------------------------
 design -reset
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 9 -set M 11 fair_arbiter
 synth -top fair_arbiter
 flatten
@@ -46,7 +46,7 @@ stat
 ltp -noff
 
 design -reset
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 11 -set M 9 fair_arbiter
 synth -top fair_arbiter
 flatten
@@ -57,7 +57,7 @@ ltp -noff
 # 16x16: depth > 40, candidate for 2-cycle pipeline / 4x4 hierarchy
 # ---------------------------------------------------------------------------
 design -reset
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 16 -set M 16 fair_arbiter
 synth -top fair_arbiter
 flatten
@@ -68,7 +68,7 @@ ltp -noff
 # Reset vs no-reset (delta register), 8x8
 # ---------------------------------------------------------------------------
 design -reset
-read_verilog -sv rtl/fair_arbiter.v
+read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v
 chparam -set N 8 -set M 8 -set PTR_RESET 0 fair_arbiter
 synth -top fair_arbiter
 flatten

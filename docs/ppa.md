@@ -167,7 +167,8 @@ WFA synthesis detail (generic cells, async-reset DFF, `synth/synth.ys`):
 | 11x9 | 2029 | 4 | 35 |
 | 16x16 | 5261 | 4 | 48 |
 
-The WFA numbers are for `rtl/fair_arbiter.v` (P = max(N,M) torus
+The WFA numbers are for the wrapper `rtl/fair_arbiter.v` + core `rtl/wfa_core.v`
+(P = max(N,M) torus
 diagonals, P stages, rotating start).  The current RTL also uses a log-depth
 cyclic rotator for delta (instead of a runtime modulo + per-bit P-way mux) and
 an N>M transpose wrapper, so 11x9 reuses the 9x11 core; the N>M transpose is pure

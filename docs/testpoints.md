@@ -174,7 +174,7 @@ ITER then only matters for random/bursty traffic throughput, not full-crossbar.
 
 Command:
 ```
-iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
+iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 ```
 

@@ -46,7 +46,8 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 ## 文件结构
 
 ```
-rtl/fair_arbiter.v          默认 WFA RTL（N、M、PTR_RESET；ITER/AUGMENT 兼容但忽略）
+rtl/fair_arbiter.v          顶层 WFA wrapper（原始接口不变；N、M、PTR_RESET）
+rtl/wfa_core.v              内部 P 级波前核心（内部扁平接口）
 rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
@@ -71,7 +72,7 @@ sim/run_all.sh              全套验证（主回归 + 极大性 + X 检查 + �
 需 Icarus Verilog（`iverilog`）。Windows 下用 oss-cad-suite 时，先把 `bin` 和 `lib` 加入 PATH：
 
 ```bash
-iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
+iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 ```
 
@@ -80,15 +81,15 @@ vvp sim/sim.vvp
 极大性检查（18 种 N/M，含 10x10，长随机 + 对抗模式）：
 
 ```bash
-iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/fair_arbiter.v tb/tb_maximal.sv
+iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/maximal.vvp
 ```
 
 长跑随机 soak（4 种形状 × 1500 拍带随机反压，另加 10x10 × 20000 拍）：
 
 ```bash
-iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/fair_arbiter.v tb/tb_soak.sv
-iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
 vvp sim/soak.vvp
 vvp sim/soak10.vvp
 ```

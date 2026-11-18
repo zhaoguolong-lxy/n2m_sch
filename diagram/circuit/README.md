@@ -112,13 +112,13 @@ python scripts/gen_wfa_diagrams.py
 
 # 极大性检查（18 种 N/M 形状）
 iverilog -g2012 -s tb_maximal_top -o sim/torus_max.vvp \
-    rtl/fair_arbiter.v tb/tb_maximal.sv
+    rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/torus_max.vvp
 
 # 综合 / 深度
-yosys -p "read_verilog -sv rtl/fair_arbiter.v; \
+yosys -p "read_verilog -sv rtl/wfa_core.v rtl/fair_arbiter.v; \
           chparam -set N 10 -set M 10 fair_arbiter; \
-          synth -top fair_arbiter; stat; ltp -noff"
+          synth -top fair_arbiter; flatten; stat; ltp -noff"
 ```
 
 RTL：`rtl/fair_arbiter.v`（默认 WFA 实现；`ITER`/`AUGMENT` 保留但被忽略）。

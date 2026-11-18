@@ -48,7 +48,8 @@ log-depth cyclic rotator for the delta priority and an N>M transpose wrapper
 ## Files
 
 ```
-rtl/fair_arbiter.v      default WFA RTL (N, M, PTR_RESET; ITER/AUGMENT legacy/ignored)
+rtl/fair_arbiter.v      top-level WFA wrapper (exact required ports; N,M,PTR_RESET)
+rtl/wfa_core.v          internal P-stage wavefront core (flat internal interface)
 rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
@@ -72,7 +73,7 @@ Requires Icarus Verilog (iverilog). On Windows with oss-cad-suite, put `bin`
 and `lib` on PATH first (DLLs / lib-ivl).
 
 ```
-iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
+iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 ```
 
@@ -82,7 +83,7 @@ Maximality checker (18 N/M shapes, long random run, adversarial patterns,
 includes 10x10):
 
 ```
-iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/fair_arbiter.v tb/tb_maximal.sv
+iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/maximal.vvp
 ```
 
@@ -90,8 +91,8 @@ Long randomized soak (4 shapes x 1500 cycles with random backpressure, plus
 10x10 x 20000 cycles):
 
 ```
-iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/fair_arbiter.v tb/tb_soak.sv
-iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
 vvp sim/soak.vvp
 vvp sim/soak10.vvp
 ```

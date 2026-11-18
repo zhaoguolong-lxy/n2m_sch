@@ -66,7 +66,8 @@ internal scheduling.
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
 Fair variant verification: main regression 295,848 checks PASS; maximality
-18/18 (0 non-max / 0 wasted); 4-shape soak x 1500 PASS; strict fairness 42/42.
+18/18 (0 non-max / 0 wasted); 4-shape soak x 1500 PASS; 10x10 x 20,000 soak
+PASS (146,021 grants, 0 violations); strict fairness 42/42.
 Its multi-source Jain averages (10x10 model, 3000-cycle
 persistent patterns): pure WFA src 0.819-0.834 / dst 0.804-0.891; fair src
 0.866-0.895 / dst 0.912-0.934.  Full crossbar is 1.000 for both.  The fair

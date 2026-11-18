@@ -161,6 +161,7 @@ a strict ascending order, which is the documented WFA tradeoff.
 | Fair-variant main regression (22 configs) | **ALL PASS** | 295,848 |
 | Fair-variant maximality (18 shapes) | **18/18 PASS** | 0 non-max / 0 wasted |
 | Fair-variant soak (4 shapes x 1500) | **PASS** | 0 violations |
+| Fair-variant 10x10 x 20,000 soak | **PASS** | 146,021 grants, 0 violations |
 
 Multi-source fairness model (`scripts/fairness_compare.py`, 10x10, 3000-cycle
 persistent patterns):

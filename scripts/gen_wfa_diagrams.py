@@ -917,7 +917,7 @@ def d07(path):
     d.region(980, 100, 480, 610, "对比与验证", CYAN)
     d.txt(1000, 140, "严格单源/单目的 42/42 PASS", 9, GREEN)
     d.txt(1000, 164, "fair 主回归 295,848 checks PASS", 9, GREEN)
-    d.txt(1000, 188, "极大性 18/18；4 形状 soak PASS", 9, GREEN)
+    d.txt(1000, 188, "极大性 18/18；4 形状+20k soak PASS", 9, GREEN)
     d.txt(1000, 220, "多源 Jain 平均（10x10）", 9, CYAN, weight=600)
     d.txt(1000, 244, "        纯 WFA      fair", 8.5, DIM)
     d.txt(1000, 264, "src     0.819-0.834  0.866-0.895", 8.5, TXT)

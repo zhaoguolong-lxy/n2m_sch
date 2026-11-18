@@ -56,7 +56,7 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
 
 fair 版验证：主回归 295,848 checks PASS；极大性 18/18；4 形状 soak × 1500
-PASS；严格公平 42/42。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
+PASS；10x10 × 20,000 soak PASS（146,021 grants，0 违规）；严格公平 42/42。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
 0.819-0.834 / dst 0.804-0.891；fair src 0.866-0.895 / dst 0.912-0.934。
 全交叉开关两者都是 1.000。fair 版不是“全流量严格 RR”的数学保证
 （fill-only 端口是近似），但它是当前单拍下最好的折中。

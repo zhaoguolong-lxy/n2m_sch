@@ -122,7 +122,8 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 2. 对未匹配残差跑 WFA fill：保证极大/不浪费；
 3. `a_ptr/g_ptr` 在最终匹配上推进。
 
-严格单源/单目的 42/42；fair 主回归 295,848，极大性 18/18，4 形状 soak PASS。
+严格单源/单目的 42/42；fair 主回归 295,848，极大性 18/18，4 形状 soak PASS，
+10x10 × 20,000 soak PASS（146,021 grants）。
 多源公平的 Jain 平均值比纯 WFA 更高（10x10 持续矩阵：
 src 0.819-0.834 → 0.866-0.895，dst 0.804-0.891 → 0.912-0.934）。代价是
 10x10 74 级 / 5406 cells；fast 默认是 36 级 / 5200 cells。fair 版不是全流量

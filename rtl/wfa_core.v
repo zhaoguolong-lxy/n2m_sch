@@ -93,16 +93,22 @@ module wfa_core #(
 
     //=========================================================================
     // Rotating column offset.  delta is the only sequential state.
+    //
+    // The enable is |req_pad (any effective request), not |match_accept.  For
+    // a maximal WFA any request produces at least one grant, so this is
+    // functionally equivalent, but it removes the long input -> wavefront ->
+    // any_req -> delta path from the delta D input.
     //=========================================================================
     reg [CWP-1:0] delta;
-    wire any_grant;
+    wire any_req;
+    assign any_req = |req_pad;
 
     generate
         if (PTR_RESET) begin : gen_d_rst
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin
                     delta <= {CWP{1'b0}};
-                end else if (any_grant) begin
+                end else if (any_req) begin
                     if (delta == P - 1) begin
                         delta <= {CWP{1'b0}};
                     end else begin
@@ -112,7 +118,7 @@ module wfa_core #(
             end
         end else begin : gen_d_norst
             always @(posedge clk) begin
-                if (any_grant) begin
+                if (any_req) begin
                     if (delta == P - 1) begin
                         delta <= {CWP{1'b0}};
                     end else begin
@@ -195,7 +201,6 @@ module wfa_core #(
         end
     endgenerate
 
-    assign any_grant = |match_accept;
 
     //=========================================================================
     // Outputs.

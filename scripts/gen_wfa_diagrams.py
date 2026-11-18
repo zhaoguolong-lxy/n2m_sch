@@ -195,8 +195,8 @@ def d00(path):
     d.wire([(890, 690), (920, 690)], VIOLET, arrow=True)
     d.wire([(990, 683), (1020, 683), (1020, 656), (890, 656)], VIOLET,
            arrow=True)
-    d.txt(1040, 680, "any_grant 使能", 8, VIOLET)
-    d.txt(1040, 694, "（无 grant 保持）", 7.5, DIM)
+    d.txt(1040, 680, "any_req 使能", 8, VIOLET)
+    d.txt(1040, 694, "（无请求保持）", 7.5, DIM)
     d.txt(1040, 724, "δ 送 ② ④；复位 0", 8, DIM)
     # delta to rotate/inverse
     d.wire([(1020, 654), (1020, 600), (605, 600), (605, 340)], VIOLET,
@@ -205,15 +205,15 @@ def d00(path):
            arrow=True)
     d.tag(700, 610, "δ", VIOLET)
     d.tag(1355, 610, "δ", VIOLET)
-    # any_grant feedback from output
-    d.wire([(1460, 420), (1460, 592), (1120, 592), (1120, 660), (1020, 660)],
-           ROSE, arrow=True)
-    d.tag(1280, 582, "any_grant", ROSE)
+    # any_req = |eff_req enable comes from the request/pad path, not the WFA
+    d.wire([(490, 410), (490, 592), (1120, 592), (1120, 660), (1020, 660)],
+           GREEN, arrow=True)
+    d.tag(1300, 582, "any_req = |eff_req", GREEN)
 
     # depth panel
     d.region(30, 700, 680, 300, "深度指标（Yosys generic gate levels）", AMBER)
     rows = [("8x8", "P=8", "28", GREEN), ("10x10", "P=10", "36", GREEN),
-            ("9x11", "P=11", "36", GREEN), ("11x9", "P=11", "37", GREEN),
+            ("9x11", "P=11", "37", GREEN), ("11x9", "P=11", "37", GREEN),
             ("16x16", "P=16", "—", MUTED)]
     d.txt(50, 732, "配置", 9, DIM, weight=600)
     d.txt(190, 732, "P", 9, DIM, weight=600)
@@ -503,10 +503,10 @@ def d03(path):
     d.wire([(980, 202), (1020, 202)], VIOLET, arrow=True)
     d.wire([(1110, 198), (1160, 198), (1160, 150), (920, 150), (920, 160)],
            VIOLET, arrow=True)
-    d.txt(1180, 190, "any_grant", 8.5, ROSE)
-    d.txt(1180, 204, "有 grant 才转", 8, DIM)
+    d.txt(1180, 190, "any_req", 8.5, GREEN)
+    d.txt(1180, 204, "有请求就转", 8, DIM)
     d.txt(860, 270, "复位 δ=0", 8.5, DIM)
-    d.txt(860, 286, "无 grant 保持（空闲不空转）", 8.5, DIM)
+    d.txt(860, 286, "无请求保持（空闲不空转）", 8.5, DIM)
     d.txt(860, 310, "P 个周期覆盖所有对角线", 8.5, GREEN)
     d.txt(860, 326, "所有 row/column 轮获得最高优先级", 8.5, GREEN)
     d.txt(860, 350, "δ 同时送列旋转和逆旋转", 8.5, VIOLET)
@@ -675,7 +675,7 @@ def d05(path):
     rows = [
         ("旧 iSLIP+fill 10x10", 300, ROSE),
         ("默认 11x9", 37, GREEN),
-        ("默认 9x11", 36, GREEN),
+        ("默认 9x11", 37, GREEN),
         ("默认 10x10", 36, GREEN),
         ("默认 8x8", 28, GREEN),
     ]
@@ -702,10 +702,10 @@ def d05(path):
     for x, h in zip(xs, heads):
         d.txt(x, 136, h, 9, CYAN, weight=600)
     data = [
-        ("8x8", "8", "3012", "28", GREEN),
-        ("10x10", "10", "5200", "36", GREEN),
-        ("9x11", "11", "5170", "36", GREEN),
-        ("11x9", "11", "5151", "37", GREEN),
+        ("8x8", "8", "3051", "28", GREEN),
+        ("10x10", "10", "5297", "36", GREEN),
+        ("9x11", "11", "5210", "37", GREEN),
+        ("11x9", "11", "5190", "37", GREEN),
     ]
     for k, (cfg, p, cells, lv, c) in enumerate(data):
         y = 170 + k * 48
@@ -923,11 +923,11 @@ def d07(path):
     d.txt(1000, 264, "src     0.819-0.834  0.866-0.895", 8.5, TXT)
     d.txt(1000, 284, "dst     0.804-0.891  0.912-0.934", 8.5, TXT)
     d.txt(1000, 314, "PPA（flatten，generic）", 9, CYAN, weight=600)
-    d.txt(1000, 338, "8x8   3107 / 60", 8.5, TXT)
-    d.txt(1000, 358, "10x10 5406 / 74", 8.5, TXT)
-    d.txt(1000, 378, "9x11  5307 / 74", 8.5, TXT)
-    d.txt(1000, 398, "11x9  5781 / 77", 8.5, TXT)
-    d.txt(1000, 430, "对比：fast WFA+override 5200 / 36", 8.5, DIM)
+    d.txt(1000, 338, "8x8   3146 / 60", 8.5, TXT)
+    d.txt(1000, 358, "10x10 5503 / 74", 8.5, TXT)
+    d.txt(1000, 378, "9x11  5332 / 76", 8.5, TXT)
+    d.txt(1000, 398, "11x9  5862 / 75", 8.5, TXT)
+    d.txt(1000, 430, "对比：fast WFA+override 5297 / 36", 8.5, DIM)
     d.txt(1000, 450, "旧 iSLIP+fill 11821 / 300", 8.5, DIM)
     d.txt(1000, 482, "fair 不是全流量严格 RR：", 8.5, AMBER)
     d.txt(1000, 500, "首轮 per-port RR + fill-only 端口近似；", 8.5, DIM)

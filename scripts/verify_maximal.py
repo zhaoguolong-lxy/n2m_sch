@@ -27,7 +27,8 @@ import sys
 
 
 # ---------------------------------------------------------------------------
-# Algorithm mirror of rtl/fair_arbiter.v
+# Algorithm mirror of the iSLIP+fill reference:
+#   rtl/reference/fair_arbiter_islip.v
 # ---------------------------------------------------------------------------
 def islip(N, M, req, iters):
     g = [j % N for j in range(M)]

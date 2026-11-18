@@ -6,7 +6,8 @@ The arbiter is tested along eight orthogonal dimensions; every scenario also
 re-checks two global invariants (orthogonality and grant-implies-request).
 
 ### Dimension A: configuration (N x M x ITER x AUGMENT)
-Default configuration is ITER=4, AUGMENT=1 (maximal + largest matching).
+Default configuration is the WFA (P=max(N,M)); `ITER`/`AUGMENT` are legacy
+parameters kept for the iSLIP reference and are ignored by the WFA.
 
 | ID | Config | Purpose |
 |----|--------|---------|
@@ -77,11 +78,15 @@ Default configuration is ITER=4, AUGMENT=1 (maximal + largest matching).
 ### Dimension G: maximality (the hard requirement)
 | ID | Scenario | Checks |
 |----|----------|--------|
-| G1 | `scripts/verify_maximal.py` exhaustive small shapes | every request matrix of 2x2..3x4: no wasted pair |
-| G2 | `scripts/verify_maximal.py` all shapes 2..16 | random densities 5%..99%, 7 densities x 20 graphs |
-| G3 | `scripts/verify_maximal.py` arbitrary base matching | fill alone repairs any base to maximal |
+| G1 | `scripts/verify_wfa.py` exhaustive small shapes | every request matrix of 2x2..3x4, every δ: no wasted pair |
+| G2 | `scripts/verify_wfa.py` all shapes 2..16 | random densities 5%..99%, 5 graphs x every δ |
+| G3 | `scripts/verify_wfa.py` all start offsets | maximality for every δ priority rotation |
 | G4 | `tb/tb_maximal.sv` 18 N/M shapes | ~780 cycles each: adversarial patterns + 7 random densities |
-| G5 | `tb/tb_maximal.sv` 10x10 ITER=1/4, AUGMENT=0/1 | maximality independent of greedy quality |
+| G5 | `tb/tb_maximal.sv` 10x10 ITER/AUGMENT variants | parameters ignored by WFA; maximality still holds |
+
+The iSLIP reference model is still checked by `scripts/verify_maximal.py`
+(67,118 cases, 0 failures); the default WFA model is checked by
+`scripts/verify_wfa.py` (94,475 cases, 0 failures).
 
 ### Dimension H: long randomized soak (stability)
 | ID | Scenario | Checks |
@@ -103,37 +108,39 @@ is an error.  `tb_maximal.sv` also checks orthogonality and that
 ## 2. Results
 
 Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 22 configurations
-passed; total 294,356 checks, 0 errors.
+passed; total 295,797 checks, 0 errors.  The source/protocol checks are
+the same as before; S4-S7 now check cyclic coverage/count fairness rather than
+a strict ascending order, which is the documented WFA tradeoff.
 
 | Config | Result | Checks |
 |--------|--------|--------|
-| cfg_2x2 | PASS | 3363 |
-| cfg_5x3 | PASS | 6447 |
-| cfg_3x5 | PASS | 6612 |
-| cfg_6x4 | PASS | 7939 |
-| cfg_4x6 | PASS | 7945 |
-| cfg_8x4 | PASS | 9011 |
-| cfg_4x8 | PASS | 9023 |
-| cfg_6x6 | PASS | 10071 |
-| cfg_8x8 (ITER=4, AUGMENT=1) | PASS | 13425 |
-| cfg_8x8_nrst (PTR_RESET=0) | PASS | 13425 |
-| cfg_8x8_i1 (ITER=1) | PASS | 13425 |
-| cfg_8x8_i3 (ITER=3) | PASS | 13425 |
-| cfg_8x9 | PASS | 14837 |
-| cfg_7x11 | PASS | 14959 |
-| cfg_9x9 | PASS | 15827 |
-| cfg_9x11 | PASS | 17235 |
-| cfg_11x9 | PASS | 17049 |
-| cfg_10x10 (ITER=4, AUGMENT=1) | PASS | 16779 |
-| cfg_15x15_i1 | PASS | 26429 |
-| cfg_16x16_i1 | PASS | 26841 |
-| cfg_10x10_noswap (AUGMENT=0) | PASS | 16827 |
-| cfg_8x8_noswap (AUGMENT=0, S16) | PASS | 13462 |
-| **Total (22 configs)** | **ALL PASS** | **294356** |
+| cfg_2x2 | PASS | 3381 |
+| cfg_5x3 | PASS | 6499 |
+| cfg_3x5 | PASS | 6640 |
+| cfg_6x4 | PASS | 8003 |
+| cfg_4x6 | PASS | 8003 |
+| cfg_8x4 | PASS | 9107 |
+| cfg_4x8 | PASS | 9107 |
+| cfg_6x6 | PASS | 10117 |
+| cfg_8x8 | PASS | 13485 |
+| cfg_8x8_nrst | PASS | 13485 |
+| cfg_8x8_i1 | PASS | 13485 |
+| cfg_8x8_i3 | PASS | 13485 |
+| cfg_8x9 | PASS | 14898 |
+| cfg_7x11 | PASS | 15002 |
+| cfg_9x9 | PASS | 15883 |
+| cfg_9x11 | PASS | 17308 |
+| cfg_11x9 | PASS | 17143 |
+| cfg_10x10 | PASS | 16853 |
+| cfg_15x15_i1 | PASS | 26533 |
+| cfg_16x16_i1 | PASS | 26957 |
+| cfg_10x10_noswap | PASS | 16901 |
+| cfg_8x8_noswap | PASS | 13522 |
+| **Total (22 configs)** | **ALL PASS** | **295797** |
 
 The added 8x9 / 9x9 / 9x11 / 11x9 / 7x11 / 15x15 configs exercise the
 `$clog2` width transitions just above/below power-of-two (8->9, 15->16) and
-the pointer wrap at odd boundaries, which is where sizing bugs hide.
+the delta/pointer wrap at odd boundaries, which is where sizing bugs hide.
 
 ### Long-run results (G4, H1, H2)
 
@@ -144,10 +151,10 @@ the pointer wrap at odd boundaries, which is where sizing bugs hide.
 | 10x10 soak (H2) | 10x10 ITER=4 AUGMENT=1 | 20000 | 0 non-max, 0 wasted, 0 orth/cons/impl/bp |
 
 The 20,000-cycle 10x10 soak covers 720,096 effective request instants and
-154,561 grants with 10% random source + destination backpressure re-drawn every
+144,315 grants with 10% random source + destination backpressure re-drawn every
 cycle.  Grant rates under soak (which includes backpressure, so below the
-no-backpressure benchmark): 8x8 75.0%, 9x11 82.4%, 10x10 A0 74.1%, 16x16
-82.3%, 10x10 A1 77.3% of min(N,M).
+no-backpressure benchmark): 8x8 70.4%, 9x11 78.4%, 10x10 A0 73.2%, 16x16
+77.9%, 10x10 A1 72.2% of min(N,M).
 
 ### Matching quality (S17) - staggered reset
 
@@ -181,11 +188,12 @@ vvp sim/sim.vvp
   known state after reset (simulating power-on), then running the same
   invariants; Icarus `$deposit` cannot target unpacked-array words, which is
   why the pointers are stored as flat vectors in the RTL.
-- **AUGMENT tradeoff**: `AUGMENT=1` (swap) uses a fixed lowest-index priority
-  to maximize matching size, which relaxes round-robin fairness.  The S16
-  starvation test is therefore skipped for `AUGMENT=1` (it would starve a
-  fixed-matrix pair).  Maximality is instead checked by `tb_maximal.sv`
-  (req[i][j] && src and dst both idle -> error).
+- **AUGMENT tradeoff (old iSLIP reference)**: `AUGMENT=1` (swap) uses a fixed
+  lowest-index priority to maximize matching size, which relaxes round-robin
+  fairness.  The S16 starvation test is therefore skipped for `AUGMENT=1` in
+  the legacy TB selection.  For the default WFA, AUGMENT is ignored; S16 runs
+  for the AUGMENT=0-selected configs and passes.  Maximality is checked by
+  `tb_maximal.sv` (req[i][j] && src and dst both idle -> error).
 
 ## 4. X-state (unknown) check
 

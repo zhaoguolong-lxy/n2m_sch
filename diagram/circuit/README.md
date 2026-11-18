@@ -74,15 +74,15 @@ Yosys 0.66 generic gate levels（`ltp -noff`），含旋转 MUX 与输出编码�
 
 | 配置 | P | cells | flops | 级数 | 状态 |
 |------|---|-------|-------|------|------|
-| 8x8 | 8 | 1189 | 3 | **28** | 达标 |
-| 10x10 | 10 | 3699 | 4 | **39** | 达标 |
-| 9x11 | 11 | 6072 | 4 | 41 | 超标 1 级 |
-| 11x9 | 11 | 6630 | 4 | 43 | 超标 3 级 |
-| 16x16 | 16 | 5396 | 4 | 48 | 超标 8 级 |
+| 8x8 | 8 | 1181 | 3 | **28** | 达标 |
+| 10x10 | 10 | 3865 | 4 | **38** | 达标 |
+| 9x11 | 11 | 6028 | 4 | **40** | 达标（边界） |
+| 11x9 | 11 | 6573 | 4 | 44 | 超标 4 级 |
+| 16x16 | 16 | 5414 | 4 | 48 | 超标 8 级 |
 
 - 旧 iSLIP + 串行 fill：10x10 11821 cells、300 级、80 flops。
-- WFA：10x10 3699 cells、39 级、4 flops；**面积约 1/3，级数约 1/8**。
-- P≤10 已满足 ≤40；P=11 只超 1-3 级，可去掉输出编码关键路径或重定时。
+- WFA：10x10 3865 cells、38 级、4 flops；**面积约 1/3，级数约 1/8**。
+- P≤10 已满足 ≤40，9x11 为 40；11x9 超 4 级，可去掉输出编码关键路径或重定时。
 - P=16 超 8 级，建议 2 拍流水（每拍 P/2 级，约 24 级）或 4x4 分层
   （局部 WFA + 二级仲裁），代价是 latency 或连线/面积。
 
@@ -110,14 +110,14 @@ python scripts/gen_wfa_diagrams.py
 
 # 极大性检查（18 种 N/M 形状）
 iverilog -g2012 -s tb_maximal_top -o sim/torus_max.vvp \
-    rtl/fair_arbiter_torus.v tb/tb_maximal.sv
+    rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/torus_max.vvp
 
 # 综合 / 深度
-yosys -p "read_verilog -sv rtl/fair_arbiter_torus.v; \
+yosys -p "read_verilog -sv rtl/fair_arbiter.v; \
           chparam -set N 10 -set M 10 fair_arbiter; \
           synth -top fair_arbiter; stat; ltp -noff"
 ```
 
-RTL：`rtl/fair_arbiter_torus.v`（与旧 `rtl/fair_arbiter.v` 端口、参数兼容，
-`ITER`/`AUGMENT` 保留但被忽略）。
+RTL：`rtl/fair_arbiter.v`（默认 WFA 实现；`ITER`/`AUGMENT` 保留但被忽略）。
+严格 RR 的旧 iSLIP+fill 参考实现移至 `rtl/reference/fair_arbiter_islip.v`。

@@ -1,5 +1,10 @@
 # Fair Arbiter - Synthesis & PPA
 
+> **Default RTL is now the Wavefront (WFA/WWFA) implementation** in
+> `rtl/fair_arbiter.v` (section 8).  Sections 1-7 describe the earlier
+> iSLIP + residual-fill reference (`rtl/reference/fair_arbiter_islip.v`) and are
+> kept for comparison.
+
 Synthesizer: Yosys 0.66 (`synth -top fair_arbiter`), generic gate library
 (no standard-cell liberty file, so "area" = count of gate-level cells after
 ABC mapping).  "Depth" = longest topological path from `ltp -noff`, in mapped
@@ -149,18 +154,28 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| Wavefront WFA (new) | **28** | **39** | 41 | 43 | 48 |
+| Wavefront WFA (default) | **28** | **38** | **40** | 44 | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
 
-The WFA numbers are for `rtl/fair_arbiter_torus.v` (P = max(N,M) torus
-diagonals, P stages, rotating start).  `8x8` and `10x10` meet the target;
-`9x11` / `11x9` are 1-3 levels over and can be fixed by removing the output
-encoder from the critical path or retiming; `16x16` is 8 levels over and is the
+WFA synthesis detail (generic cells, async-reset DFF, `synth/synth.ys`):
+
+| Config | cells | flops | levels |
+|--------|-------|-------|--------|
+| 8x8 | 1181 | 3 | 28 |
+| 10x10 | 3865 | 4 | 38 |
+| 9x11 | 6028 | 4 | 40 |
+| 11x9 | 6573 | 4 | 44 |
+| 16x16 | 5414 | 4 | 48 |
+
+The WFA numbers are for `rtl/fair_arbiter.v` (P = max(N,M) torus
+diagonals, P stages, rotating start).  `8x8`, `10x10` and `9x11` meet the target; `11x9` is 4 levels over and can be
+fixed by removing the output encoder from the critical path or retiming;
+`16x16` is 8 levels over and is the
 candidate for a 2-cycle pipelined wavefront (P/2 = 8 stages per cycle, about 24
 levels) or a 4x4 hierarchical split.  The cell itself is 2 gate levels
 (`G = R & N & W`, token update = AND + NAND), so the depth is dominated by P.
 
 WFA also removes the serial N-stage fill: the 10x10 area drops from 11,821 to
-3,699 cells and the flop count from 80 to 4 (only the rotating start register).
+3,865 cells and the flop count from 80 to 4 (only the rotating start register).
 The price is that WFA is maximal but not maximum-cardinality, and the exact
 per-port RR order is relaxed (see `diagram/circuit/README.md`).

@@ -1,24 +1,26 @@
-# Fair Arbiter (iSLIP crossbar scheduler)
+# Fair Arbiter (Wavefront crossbar scheduler)
 
-[中文文档](README.zh-CN.md) · [Scheme diagram](diagram/fair_arbiter_scheme.svg) · [Algorithm animation](diagram/fair_arbiter_animation.svg)
+[中文文档](README.zh-CN.md) · [WFA circuit diagrams](diagram/circuit/README.md) · [Old iSLIP scheme](diagram/fair_arbiter_scheme.svg)
 
 A parameterizable N-to-M fair arbiter: every cycle it produces an orthogonal
-(one-to-one) matching between N sources and M destinations, with round-robin
-fairness on both sides, zero-latency (same-cycle) grant, and source/destination
-backpressure.
+(one-to-one) matching between N sources and M destinations, with rotating
+priority fairness, zero-latency (same-cycle) grant, and source/destination
+backpressure.  The default implementation is the **Wavefront Arbiter
+(WFA/WWFA)**: P=max(N,M) torus diagonals, P combinational stages, and only one
+small rotating-start register.
 
 **Hard guarantee:** the matching is *maximal* every cycle, for every N and M.
 A requested pair is never left unserved when both its source and its
 destination are idle (the exact "no wasted scheduling opportunity" criterion).
 This holds for 10x10, non-power-of-two sizes, N<M and N>M alike.
 
-**Verification summary:** 22 configurations / 294,356 checks pass; 18 N/M
+**Verification summary:** 22 configurations / 295,797 checks pass; 18 N/M
 shapes (2x2 ... 16x16, including 10x10) report 0 non-maximal cycles, 0 wasted
 pairs and 0 orthogonality violations over 773 cycles each; long randomized soak
 (4 shapes x 1500 cycles with random backpressure, plus 10x10 x 20,000 cycles /
 720,096 request instants) reports 0 non-maximal cycles and 0 invariant
-violations; the algorithm-level script checks 67,118 cases (exhaustive for small
-shapes, every shape 2..16) with 0 failures; reset and X-state checks pass.
+violations; the WFA algorithm-level script checks 94,475 cases (exhaustive for
+small shapes, every shape 2..16) with 0 failures; reset and X-state checks pass.
 
 ## Detailed circuit-level diagrams (PNG)
 
@@ -34,28 +36,29 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [Depth / area metric](diagram/circuit/wfa_05_depth.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
-The WFA RTL (`rtl/fair_arbiter_torus.v`) has the same ports/parameters as the
-main design; 10x10 maps to 3699 cells / 39 gate levels, vs 11821 cells /
+The default RTL (`rtl/fair_arbiter.v`) is now the WFA implementation; 10x10 maps to 3865 cells / 38 gate levels, vs 11821 cells /
 300 levels for the iSLIP+fill version.  It is maximal (no wasted pair) but not
 maximum-cardinality, and its per-port RR order is relaxed (the two sides rotate
 in opposite directions); see the index for the exact tradeoff.  The <=40-level
-target is met at 8x8/10x10; 9x11, 11x9 and 16x16 are 1-8 levels over and have a
+target is met at 8x8/10x10; 11x9 and 16x16 are 4-8 levels over and have a
 documented 2-cycle / hierarchical optimization path.
 
 ## Files
 
 ```
-rtl/fair_arbiter.v      synthesizable RTL (N, M, PTR_RESET, ITER, AUGMENT)
+rtl/fair_arbiter.v      default WFA RTL (N, M, PTR_RESET; ITER/AUGMENT legacy/ignored)
+rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)
 tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
-scripts/verify_maximal.py  exhaustive algorithm-level maximality proof check
+scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
+scripts/verify_maximal.py  same check for the old iSLIP+fill reference
 sim/run_sim.sh          compile + run wrapper (optional)
 sim/run_all.sh          full verification suite (all of the above)
-synth/synth.ys          Yosys synthesis + PPA script
-synth/rr_compare.v      arbiter-core A/B comparison (PPA iteration)
+synth/synth.ys          Yosys synthesis + depth/area sweep (WFA)
+synth/synth_islip.ys    synthesis sweep for the iSLIP reference
 docs/scheme.md          design + scheme diagram
 docs/testpoints.md      test point matrix + results
 docs/ppa.md             synthesis / PPA results
@@ -98,10 +101,10 @@ bash sim/run_all.sh
 ```
 
 Exhaustive algorithm check (all request matrices for small shapes, every shape
-2..16, arbitrary base matchings):
+2..16, every WFA start offset):
 
 ```
-python scripts/verify_maximal.py
+python scripts/verify_wfa.py
 ```
 
 ## Synthesize (PPA)
@@ -116,36 +119,35 @@ yosys -s synth/synth.ys        # prints area stats for the sweep
 |-------|---------|---------|
 | N | number of sources (>= 2) | 8 |
 | M | number of destinations (>= 2) | 8 |
-| PTR_RESET | 0 = no-reset pointers (area), 1 = async reset | 1 |
-| ITER | greedy matching iterations | 4 |
-| AUGMENT | 1 = swap/augmenting pass (larger matching, relaxed fairness) | 1 |
+| PTR_RESET | 0 = no-reset delta (area), 1 = async reset | 1 |
+| ITER | legacy, ignored by the WFA (kept for reference TB compatibility) | 4 |
+| AUGMENT | legacy, ignored by the WFA | 1 |
 
-The residual-fill stage is always present and is what guarantees maximality.
-`AUGMENT` only affects the matching SIZE: `1` gives 97-98% of min(N,M) at
-8x8/10x10 (95% at 16x16, ~100% when N!=M) on random traffic, at the cost of
-relaxed round-robin fairness; `0` gives 89-91% at 8x8/10x10 with strict iSLIP
-fairness.  `ITER=2, AUGMENT=1` reaches the same 97-98% as ITER=4 with ~30-36%
-fewer cells (see `docs/ppa.md`).
+Random-traffic matching size of the WFA is 86% (8x8), 89% (10x10), 92% (16x16)
+and 96-100% when N!=M.  This is lower than the old iSLIP+augment 97-98% because
+the WFA is maximal but not maximum-cardinality, which is the accepted tradeoff
+for depth.  The old iSLIP+fill reference (`ITER`/`AUGMENT`) reaches 97-98% but
+costs 300 levels at 10x10; see `docs/ppa.md`.
 
 ## Maximality guarantee
 
-A finite number of iSLIP passes is not guaranteed to be maximal for every
-request pattern, and a parallel swap can move a match without completing its
-replacement. The design therefore ends with a **residual fill** that only ADDS
-matches to still-unmatched sources / still-free destinations:
+The default WFA is **maximal by construction**.  The P torus diagonals visit
+every crosspoint exactly once.  Suppose a requested pair `(i,j)` still has both
+its source and destination idle at the end.  The free row/column sets only
+shrink during the wave, so both were still free when `(i,j)`'s diagonal was
+evaluated; the cell would therefore have granted.  Contradiction.  Hence no
+requested pair is left unserved when both ends are idle, for every N/M.
 
-```
-for i = 0 .. N-1:
-    if source i unmatched: take a requested destination that is still free
-```
+This is *maximal*, not *maximum*: a source can lose when its only requested
+destination was taken by an earlier diagonal.  `scripts/verify_wfa.py` checks
+this exhaustively for all request matrices of small shapes and on 94,475 cases
+across every shape 2..16 / every start offset; `tb/tb_maximal.sv` reports zero
+violations on 18 RTL shapes, including 10x10.
 
-Adding an edge can never create a new wasted pair (both endpoints would have
-to be idle), and the fill leaves no requested pair with both ends idle: if
-`(i,j)` survived, `j` was free on `i`'s turn (the free set only shrinks), so
-`i` would have taken some destination. Hence the final matching is maximal for
-every N/M. `scripts/verify_maximal.py` checks this exhaustively for all request
-matrices of small shapes and on 67k+ cases across every shape 2..16; the RTL
-checker `tb/tb_maximal.sv` reports zero violations for all 18 tested shapes.
+The earlier iSLIP + **residual fill** reference achieves maximality the same
+way with a serial dictatorship over sources (see
+`rtl/reference/fair_arbiter_islip.v` and `docs/scheme.md`); it is kept for
+comparison and for strict per-port RR order.
 
 ## Interface
 

@@ -16,7 +16,7 @@ echo "=== 1/7 main regression (22 configs, 17 scenarios) ==="
 iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 
-echo "=== 2/7 maximality sweep (18 N/M shapes, long random run) ==="
+echo "=== 2/7 maximality sweep (18 N/M shapes, WFA + random/adversarial) ==="
 iverilog -g2012 -Wall -s tb_maximal_top -o sim/maximal.vvp rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/maximal.vvp
 
@@ -32,11 +32,11 @@ echo "=== 5/7 reset / X-state checks ==="
 iverilog -g2012 -s tb_x_check -o sim/xcheck.vvp rtl/fair_arbiter.v tb/tb_x_check.sv
 vvp sim/xcheck.vvp
 
-echo "=== 6/7 throughput benchmark (long run) ==="
+echo "=== 6/7 throughput benchmark (WFA, long run) ==="
 iverilog -g2012 -Wall -s tb_perf_top -o sim/perf.vvp rtl/fair_arbiter.v tb/tb_perf.sv
 vvp sim/perf.vvp
 
-echo "=== 7/7 exhaustive algorithm-level maximality check ==="
-python scripts/verify_maximal.py
+echo "=== 7/7 exhaustive algorithm-level WFA check ==="
+python scripts/verify_wfa.py
 
 echo "ALL CHECKS PASSED"

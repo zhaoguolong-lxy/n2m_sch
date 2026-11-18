@@ -16,10 +16,11 @@
 //   S1  idle / no requests
 //   S2  single request at corner/edge positions
 //   S3  same-cycle (zero latency) result
-//   S4  source-side round-robin, all destinations (order + wrap)
-//   S5  source-side round-robin, subset of destinations (skip + wrap)
-//   S6  destination-side round-robin, all sources (order + wrap)
-//   S7  destination-side round-robin, subset of sources (skip + wrap)
+//   S4  source-side fairness coverage, all destinations
+//   S5  source-side fairness coverage, subset of destinations
+//   S6  destination-side fairness coverage, all sources
+//   S7  destination-side fairness coverage, subset of sources
+//       (WFA: cyclic coverage; the old iSLIP reference has strict order)
 //   S8  conflict-free permutation (diagonal) - all granted
 //   S9  full crossbar - perfect matching of size min(N,M) after warmup
 //   S10 random traffic - invariants
@@ -32,7 +33,7 @@
 //
 // The DUT grant output is combinational: a request driven on cycle T is
 // granted on cycle T.  Inputs change at negedge; outputs are checked after a
-// small settle delay, before the next posedge advances the pointers.
+// small settle delay, before the next posedge advances the WFA delta.
 //
 // Indexing: request/grant matrices are flat 1-D vectors (bit (n,m) = n*M+m)
 // because Icarus Verilog does not support chained variable indexing arr[n][m]
@@ -63,6 +64,7 @@ module tb_core #(
     localparam integer CW_M  = $clog2(M);
     localparam integer NM    = N * M;
     localparam integer MIN   = (N < M) ? N : M;
+    localparam integer PMAX  = (N > M) ? N : M;
 
     logic                    clk;
     logic                    rst_n;
@@ -121,8 +123,7 @@ module tb_core #(
     //-------------------------------------------------------------------------
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
-            $deposit(dut.g_ptr, {M*CW_N{1'b0}});
-            $deposit(dut.a_ptr, {N*CW_M{1'b0}});
+            $deposit(dut.delta, '0);
         end
     endtask
 
@@ -259,34 +260,60 @@ module tb_core #(
     endtask
 
     //=========================================================================
-    // S4: source-side round-robin, all destinations.
+    // S4: source-side fairness, all destinations.
+    //
+    // The wavefront variant gives cyclic coverage rather than a strict
+    // 0,1,2,... sequence (the two port sides rotate in opposite directions).
+    // The meaningful properties are: every cycle the source is served, the
+    // grant is one of its requests, and every destination is covered in the
+    // 2*PMAX-cycle window (PMAX = max(N,M)).  The strict order is still checked for the iSLIP
+    // reference in rtl/reference/fair_arbiter_islip.v.
     //=========================================================================
     task automatic s_src_rr();
-        $display("[%s] S4 source RR (all dests)", NAME);
+        logic [31:0] seen;
+        int d;
+        logic ok;
+        $display("[%s] S4 source fairness coverage (all dests)", NAME);
         soft_reset();
-        for (int c = 0; c < 2*M; c = c + 1) begin
+        seen = '0;
+        for (int c = 0; c < 2*PMAX; c = c + 1) begin
             @(negedge clk);
             i_req = '0;
             i_req[0*M +: M] = '1;
             i_src_bp = '0; i_dest_bp = '0;
             #2;
             check(o_src_vld[0] == 1'b1, "S4 src0 vld");
-            check(o_src_ptr[0*CW_M +: CW_M] == (c % M),
-                  $sformatf("S4 src0 -> dest %0d, got %0d", c % M, o_src_ptr[0*CW_M +: CW_M]));
+            d = -1;
+            for (int m = 0; m < M; m = m + 1)
+                if (o_grant[0*M + m]) d = m;
+            check(d >= 0, "S4 src0 has a grant");
+            if (d >= 0) seen[d] = 1'b1;
             check(count_ones(0*M, 0*M + M-1) == 1, "S4 row onehot");
             @(posedge clk);
         end
+        ok = 1'b1;
+        for (int m = 0; m < M; m = m + 1)
+            if (!seen[m]) ok = 1'b0;
+        check(ok, "S4 all destinations covered");
     endtask
 
     //=========================================================================
-    // S5: source-side round-robin, subset of destinations (even indices).
+    // S5: source-side fairness, subset of destinations (even indices).
     //=========================================================================
     task automatic s_src_rr_subset();
         int k;
-        $display("[%s] S5 source RR (subset)", NAME);
+        int d;
+        logic [31:0] seen;
+        logic [31:0] mask;
+        logic ok;
+        $display("[%s] S5 source fairness coverage (subset)", NAME);
         k = (M + 1) / 2;   // number of even destinations
         soft_reset();
-        for (int c = 0; c < 2*k; c = c + 1) begin
+        seen = '0;
+        mask = '0;
+        for (int m = 0; m < M; m = m + 1)
+            if (m % 2 == 0) mask[m] = 1'b1;
+        for (int c = 0; c < 2*PMAX; c = c + 1) begin
             @(negedge clk);
             i_req = '0;
             for (int m = 0; m < M; m = m + 1)
@@ -294,21 +321,33 @@ module tb_core #(
             i_src_bp = '0; i_dest_bp = '0;
             #2;
             check(o_src_vld[0] == 1'b1, "S5 src0 vld");
-            check(o_src_ptr[0*CW_M +: CW_M] == (2*(c % k)),
-                  $sformatf("S5 src0 -> dest %0d, got %0d", 2*(c % k), o_src_ptr[0*CW_M +: CW_M]));
-            // grant must be to a requested (even) dest
-            check(o_grant[0*M + o_src_ptr[0*CW_M +: CW_M]] == 1'b1, "S5 grant to requested dest");
+            d = -1;
+            for (int m = 0; m < M; m = m + 1)
+                if (o_grant[0*M + m]) d = m;
+            check(d >= 0, "S5 src0 has a grant");
+            if (d >= 0) begin
+                check((d % 2) == 0, "S5 grant is an even/requested dest");
+                seen[d] = 1'b1;
+            end
             @(posedge clk);
         end
+        ok = 1'b1;
+        for (int m = 0; m < M; m = m + 1)
+            if (mask[m] && !seen[m]) ok = 1'b0;
+        check(ok, "S5 all requested destinations covered");
     endtask
 
     //=========================================================================
-    // S6: destination-side round-robin, all sources.
+    // S6: destination-side fairness, all sources.
     //=========================================================================
     task automatic s_dest_rr();
-        $display("[%s] S6 dest RR (all srcs)", NAME);
+        logic [31:0] seen;
+        int src;
+        logic ok;
+        $display("[%s] S6 destination fairness coverage (all srcs)", NAME);
         soft_reset();
-        for (int c = 0; c < 2*N; c = c + 1) begin
+        seen = '0;
+        for (int c = 0; c < 2*PMAX; c = c + 1) begin
             @(negedge clk);
             i_req = '0;
             for (int n = 0; n < N; n = n + 1)
@@ -316,21 +355,36 @@ module tb_core #(
             i_src_bp = '0; i_dest_bp = '0;
             #2;
             check(o_dest_vld[0] == 1'b1, "S6 dest0 vld");
-            check(o_dest_ptr[0*CW_N +: CW_N] == (c % N),
-                  $sformatf("S6 dest0 <- src %0d, got %0d", c % N, o_dest_ptr[0*CW_N +: CW_N]));
+            src = -1;
+            for (int n = 0; n < N; n = n + 1)
+                if (o_grant[n*M + 0]) src = n;
+            check(src >= 0, "S6 dest0 has a grant");
+            if (src >= 0) seen[src] = 1'b1;
             @(posedge clk);
         end
+        ok = 1'b1;
+        for (int n = 0; n < N; n = n + 1)
+            if (!seen[n]) ok = 1'b0;
+        check(ok, "S6 all sources covered");
     endtask
 
     //=========================================================================
-    // S7: destination-side round-robin, subset of sources (even indices).
+    // S7: destination-side fairness, subset of sources (even indices).
     //=========================================================================
     task automatic s_dest_rr_subset();
         int k;
-        $display("[%s] S7 dest RR (subset)", NAME);
+        int src;
+        logic [31:0] seen;
+        logic [31:0] mask;
+        logic ok;
+        $display("[%s] S7 destination fairness coverage (subset)", NAME);
         k = (N + 1) / 2;
         soft_reset();
-        for (int c = 0; c < 2*k; c = c + 1) begin
+        seen = '0;
+        mask = '0;
+        for (int n = 0; n < N; n = n + 1)
+            if (n % 2 == 0) mask[n] = 1'b1;
+        for (int c = 0; c < 2*PMAX; c = c + 1) begin
             @(negedge clk);
             i_req = '0;
             for (int n = 0; n < N; n = n + 1)
@@ -338,10 +392,20 @@ module tb_core #(
             i_src_bp = '0; i_dest_bp = '0;
             #2;
             check(o_dest_vld[0] == 1'b1, "S7 dest0 vld");
-            check(o_dest_ptr[0*CW_N +: CW_N] == (2*(c % k)),
-                  $sformatf("S7 dest0 <- src %0d, got %0d", 2*(c % k), o_dest_ptr[0*CW_N +: CW_N]));
+            src = -1;
+            for (int n = 0; n < N; n = n + 1)
+                if (o_grant[n*M + 0]) src = n;
+            check(src >= 0, "S7 dest0 has a grant");
+            if (src >= 0) begin
+                check((src % 2) == 0, "S7 grant is an even/requested source");
+                seen[src] = 1'b1;
+            end
             @(posedge clk);
         end
+        ok = 1'b1;
+        for (int n = 0; n < N; n = n + 1)
+            if (mask[n] && !seen[n]) ok = 1'b0;
+        check(ok, "S7 all requested sources covered");
     endtask
 
     //=========================================================================

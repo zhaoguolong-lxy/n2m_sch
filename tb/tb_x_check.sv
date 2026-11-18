@@ -5,7 +5,7 @@
 //   T1: during async reset, outputs must be clean 0 (NOT X), even when the
 //       no-reset pointers hold X.  (This is what the "& rst_n" gating buys.)
 //   T2: PTR_RESET=1 after reset -> outputs must be fully X-free.
-//   T3: PTR_RESET=0 after reset -> pointers are X, so outputs WILL be X until
+//   T3: PTR_RESET=0 after reset -> delta is X, so outputs WILL be X until
 //       initialized (expected for no-reset flops; real silicon has a
 //       deterministic unknown, not X).  After $deposit, outputs become X-free.
 //
@@ -72,8 +72,7 @@ module tb_x_check;
         check($isunknown(o_grant), "T3 (no-reset) after reset: grant IS X (expected for no-reset flops)");
 
         // ---------------- T3b: after $deposit init, X-free again ----------------
-        $deposit(dut_a.g_ptr, {M*CWN{1'b0}});
-        $deposit(dut_a.a_ptr, {N*CWM{1'b0}});
+        $deposit(dut_a.delta, '0);
         #3;
         check(!$isunknown(o_grant), "T3b after $deposit init: grant X-free");
         check(!$isunknown(o_src_ptr) || !o_src_vld, "T3b after $deposit init: src_ptr X-free when vld");

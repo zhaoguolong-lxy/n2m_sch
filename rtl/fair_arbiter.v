@@ -1,476 +1,175 @@
 //=============================================================================
-// fair_arbiter.v
+// fair_arbiter.v  (default: Wavefront / WWFA implementation)
 //
-// N-to-M fair crossbar arbiter (iSLIP scheduler, ITER iterations).
+// N-to-M work-conserving crossbar arbiter using the classic WRAPPED WAVEFRONT
+// (WWFA) diagonal scan of Tamir & Chi, implemented with P = max(N,M) stages.
 //
-// Produces, every clock cycle, an orthogonal (one-to-one) matching between
-// N sources and M destinations.  Round-robin fairness is maintained on both
-// sides by two sets of pointers:
+// This is the default implementation:
+//   - request matrix padded to P x P;
+//   - P torus diagonals, each with P cells (one per row/column);
+//   - a single rotating column offset delta gives every cell top priority in
+//     turn;
+//   - P wavefront stages instead of N+M-1 and instead of a serial fill chain.
 //
-//   g_ptr : destination-side grant pointer  (fair among the sources)
-//   a_ptr : source-side      accept pointer (fair among the destinations)
+// Cell (i, j) of a diagonal grants when
+//     G = R & row_free(i) & col_free(j)
+// and clears row i and column j for the later diagonals.  The wave visits every
+// crosspoint once, so no requested pair can remain with both ends idle: this is
+// a MAXIMAL (work-conserving) matching.  It is not a maximum-cardinality
+// matching, which is exactly the allowed behaviour.
 //
-// One scheduling pass is: request -> grant -> accept.  All of it is purely
-// combinational (continuous assignments + generate loops), so the grant for
-// a request presented in cycle T is available in cycle T (zero latency,
-// "same-cycle result").  The pointers are the only sequential elements and
-// update at posedge clk.
+// Depth: P wavefront stages plus a column-rotation mux before the array and
+// its inverse after the array.  For P <= 10 this is around 40 generic gate
+// levels; for larger P the output encoders / rotation can be pipelined or the
+// wavefront can be split.  The only state is delta (one small register).
 //
-// Scheduling efficiency (matching quality) is parameterized by ITER:
-//   A single pass can leave a source/destination idle even though a match was
-//   possible (e.g. all destinations grant the same "hot" source, which accepts
-//   only one of them).  With ITER > 1, additional request->grant->accept
-//   passes run combinationally over the still-unmatched sources/destinations,
-//   producing a larger (closer to maximal) matching.  ITER = 1 is the
-//   area/delay-optimal variant; larger ITER improves throughput toward a
-//   maximal matching at roughly linear area/depth cost.  Pointers advance only
-//   on the first pass (the standard iSLIP rule), preserving fairness.
-//
-// Hard guarantee - maximal matching every cycle:
-//   A cycle must never leave a requested pair (i,j) unserved when BOTH source
-//   i and destination j are idle.  Finite iSLIP is not guaranteed to be
-//   maximal for every request pattern, and the optional swap may remove a
-//   match without completing its replacement.  The design therefore ends with
-//   a residual-fill stage that only ADDS matches to still-unmatched sources /
-//   still-free destinations (serial dictatorship, fixed source order).  Adding
-//   an edge cannot create a new wasted pair, and no wasted pair can survive
-//   the fill: if (i,j) survived, j was still free on i's turn (the free set
-//   only shrinks) so i would have taken some destination.  This holds for
-//   every N/M, including 10x10 and non-power-of-two sizes.
-//
-//   AUGMENT = 1 adds a length-3 augmenting (swap) pass before the fill.  It
-//   improves the matching SIZE (~96-99.5% vs ~87-94% of min(N,M) on random
-//   traffic) but uses fixed lowest-index priority, which relaxes round-robin
-//   fairness; AUGMENT = 0 is the strictly fair variant.  The fill is what
-//   guarantees maximality in both cases.
-//
-// Round-robin selection hardware (per arbiter), for a request vector req and
-// priority pointer ptr:
-//   mask_hi[k] = (k >= ptr)                     // high-priority half
-//   req_hi = req & mask_hi ; req_lo = req & ~mask_hi
-//   grant  = (|req_hi) ? lowest_set(req_hi) : lowest_set(req_lo)
-//   lowest_set(x) = x & ~(x - 1)                // arithmetic find-first-one
-//
-// Fairness:
-//   - From the source side, one source that requests several destinations is
-//     served in round-robin order over successive cycles (a_ptr).
-//   - From the destination side, several sources contending for one
-//     destination are served in round-robin order (g_ptr).
-//
-// Orthogonality:
-//   - Each destination grants at most one source (grant stage is one-hot),
-//     and each source accepts at most one destination (accept stage is
-//     one-hot), so the match has no duplicated source or destination.
-//
-// Backpressure:
-//   - i_src_bp[n] = 1 : source n requests are dropped this cycle.
-//   - i_dest_bp[m] = 1 : all requests toward destination m are dropped.
-//
-// Reset:
-//   - rst_n is an active-low asynchronous reset that gates the outputs to 0
-//     while asserted (via eff_req).
-//   - The round-robin pointers default to async reset (PTR_RESET = 1) so the
-//     design is X-free in simulation after reset.  They reset to a STAGGERED
-//     diagonal (g_ptr[j] = j mod N, a_ptr[i] = i mod M) so that, on the first
-//     cycle of full-crossbar traffic, different destinations grant different
-//     sources and the match is immediately maximal instead of the classic
-//     iSLIP "all grant source 0" desynchronization.  Round-robin fairness is
-//     invariant to the pointer initial value, so for a leaner design set
-//     PTR_RESET = 0 to drop the reset (no-reset flops); a no-reset testbench
-//     can $deposit the pointers to model power-on.
-//
-// Implementation notes:
-//   - Internal request/grant/accept matrices are carried as flat 1-D vectors
-//     (bit (i,j) = i*M+j, or (j,i) = j*N+i for the destination-side views)
-//     because synthesis tools handle flat vectors inside generate loops more
-//     reliably than 2-D packed arrays.
-//   - Two small one-hot-to-binary functions are used sparingly, only on the
-//     pointer-update path.  ASCII only.
+// Parameters ITER and AUGMENT are accepted for compatibility and ignored.
 //=============================================================================
 
 `default_nettype none
 
 module fair_arbiter #(
-    parameter integer N         = 8,    // number of sources      (>= 2)
-    parameter integer M         = 8,    // number of destinations (>= 2)
-    parameter integer PTR_RESET = 1,    // 0 = no-reset pointers, 1 = async reset (default)
-    parameter integer ITER      = 4,    // number of greedy matching iterations (>= 1)
-    parameter integer AUGMENT   = 1     // 1 = add a swap/augmenting pass (larger matching; fairness relaxed)
+    parameter integer N         = 8,
+    parameter integer M         = 8,
+    parameter integer PTR_RESET = 1,
+    parameter integer ITER      = 4,    // legacy, ignored
+    parameter integer AUGMENT   = 1     // legacy, ignored
 ) (
-    input  wire                      clk,      // clock input
-    input  wire                      rst_n,    // async reset, active low
-    input  wire [N-1:0][M-1:0]       i_src_dest_req,  // source n requests dest m
-    input  wire [N-1:0]              i_src_bp,        // backpressure on source n
-    input  wire [M-1:0]              i_dest_bp,       // backpressure on dest m
-    output wire [N-1:0][M-1:0]       o_grant_rand_vld, // granted match (n -> m)
-    output wire [N-1:0]              o_grant_src_vld,  // source n got a grant
-    output wire [N-1:0][$clog2(M)-1:0] o_grant_src_ptr, // dest index for source n
-    output wire [M-1:0]              o_grant_dest_vld, // dest m got a grant
-    output wire [M-1:0][$clog2(N)-1:0] o_grant_dest_ptr  // source index for dest m
+    input  wire                      clk,
+    input  wire                      rst_n,
+    input  wire [N-1:0][M-1:0]       i_src_dest_req,
+    input  wire [N-1:0]              i_src_bp,
+    input  wire [M-1:0]              i_dest_bp,
+    output wire [N-1:0][M-1:0]       o_grant_rand_vld,
+    output wire [N-1:0]              o_grant_src_vld,
+    output wire [N-1:0][$clog2(M)-1:0] o_grant_src_ptr,
+    output wire [M-1:0]              o_grant_dest_vld,
+    output wire [M-1:0][$clog2(N)-1:0] o_grant_dest_ptr
 );
 
-    localparam integer CLOG2N = $clog2(N);   // bits to encode a source index
-    localparam integer CLOG2M = $clog2(M);   // bits to encode a dest index
+    localparam integer CWN = $clog2(N);
+    localparam integer CWM = $clog2(M);
+    localparam integer NM  = N * M;
+    localparam integer P   = (N > M) ? N : M;
+    localparam integer CWP = $clog2(P);
+    localparam integer PP  = P * P;
 
-    genvar i, j, k, t, b, l;
-
-    //=========================================================================
-    // Round-robin state (the ONLY sequential elements).
-    //
-    // g_ptr : at destination j, the source with highest priority this cycle.
-    // a_ptr : at source i,      the destination with highest priority.
-    //
-    // Both are flat vectors so each pointer element is a contiguous slice
-    // (also lets a testbench $deposit the whole vector to initialize a
-    // no-reset instance in simulation):
-    //   g_ptr[j] = g_ptr[j*CLOG2N +: CLOG2N]
-    //   a_ptr[i] = a_ptr[i*CLOG2M +: CLOG2M]
-    //
-    // They default to async reset (PTR_RESET=1) for an X-free simulation; any
-    // initial value yields a valid round-robin order, so PTR_RESET=0 drops the
-    // reset for a leaner, no-reset design.
-    //=========================================================================
-    reg [M*CLOG2N-1:0] g_ptr;
-    reg [N*CLOG2M-1:0] a_ptr;
+    genvar i, j, d, b;
 
     //=========================================================================
-    // Effective request (flat: bit i*M+j = source i -> dest j).  A request
-    // survives only if the source and destination are not backpressured and
-    // reset is not asserted (which drives all outputs to 0 during reset and
-    // avoids X propagation when pointers are uninitialized).
+    // Padded request matrix (P x P).  Backpressure and reset are folded in.
     //=========================================================================
-    wire [N*M-1:0] eff_req;
+    wire [PP-1:0] req_pad;
     generate
-        for (i = 0; i < N; i = i + 1) begin : gen_eff_req
-            for (j = 0; j < M; j = j + 1) begin : gen_eff_req_bit
-                assign eff_req[i*M + j] = i_src_dest_req[i][j]
-                                        & ~i_src_bp[i]
-                                        & ~i_dest_bp[j]
-                                        & rst_n;
+        for (i = 0; i < P; i = i + 1) begin : gen_pad_row
+            for (j = 0; j < P; j = j + 1) begin : gen_pad_bit
+                if ((i < N) && (j < M)) begin : gen_real
+                    assign req_pad[i*P + j] = i_src_dest_req[i][j] & rst_n
+                                            & ~i_src_bp[i] & ~i_dest_bp[j];
+                end else begin : gen_dummy
+                    assign req_pad[i*P + j] = 1'b0;
+                end
             end
         end
     endgenerate
 
     //=========================================================================
-    // Matching passes (parameterized by ITER).
-    //
-    // Pass t considers only sources/destinations still unmatched after passes
-    // 0..t-1, runs one request->grant->accept, and records which sources and
-    // destinations it matched.  The round-robin pointers are the same in every
-    // pass (they only advance on the clock edge, after the first pass).
-    //
-    // Flat vectors used inside this loop:
-    //   eff_req_t[i*M+j] : source i -> dest j (effective for this pass)
-    //   grant[j*N+i]     : dest j granted source i (one-hot per dest)
-    //   accept[i*M+j]    : source i accepted dest j (one-hot per source)
-    //   dst_col[j*N+i]   : = accept[i*M+j] (destination-side transposed view)
+    // Rotating column offset.  delta is the only sequential state.
     //=========================================================================
+    reg [CWP-1:0] delta;
+    wire any_grant;
+
     generate
-        for (t = 0; t < ITER; t = t + 1) begin : gen_pass
-
-            // ---- availability: unmatched at the start of pass t ----
-            wire [N-1:0] src_avail;
-            wire [M-1:0] dst_avail;
-            if (t == 0) begin : gen_avail0
-                assign src_avail = {N{1'b1}};
-                assign dst_avail = {M{1'b1}};
-            end else begin : gen_avail
-                for (i = 0; i < N; i = i + 1) begin : gen_src_avail
-                    assign src_avail[i] = gen_pass[t-1].src_avail[i]
-                                        & ~gen_pass[t-1].src_match[i];
-                end
-                for (j = 0; j < M; j = j + 1) begin : gen_dst_avail
-                    assign dst_avail[j] = gen_pass[t-1].dst_avail[j]
-                                        & ~gen_pass[t-1].dst_match[j];
+        if (PTR_RESET) begin : gen_d_rst
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) begin
+                    delta <= {CWP{1'b0}};
+                end else if (any_grant) begin
+                    if (delta == P - 1) begin
+                        delta <= {CWP{1'b0}};
+                    end else begin
+                        delta <= delta + 1'b1;
+                    end
                 end
             end
-
-            // ---- effective request for this pass ----
-            wire [N*M-1:0] eff_req_t;
-            for (i = 0; i < N; i = i + 1) begin : gen_eff_t
-                for (j = 0; j < M; j = j + 1) begin : gen_eff_t_bit
-                    assign eff_req_t[i*M + j] = eff_req[i*M + j]
-                                              & src_avail[i]
-                                              & dst_avail[j];
+        end else begin : gen_d_norst
+            always @(posedge clk) begin
+                if (any_grant) begin
+                    if (delta == P - 1) begin
+                        delta <= {CWP{1'b0}};
+                    end else begin
+                        delta <= delta + 1'b1;
+                    end
                 end
-            end
-
-            // ---- grant stage (destination side) ----
-            wire [M*N-1:0] grant;
-            for (j = 0; j < M; j = j + 1) begin : gen_grant
-                wire [N-1:0] col_req;
-                for (i = 0; i < N; i = i + 1) begin : gen_grant_col
-                    assign col_req[i] = eff_req_t[i*M + j];
-                end
-                wire [N-1:0] mask_hi;
-                wire [N-1:0] req_hi;
-                wire [N-1:0] req_lo;
-                for (i = 0; i < N; i = i + 1) begin : gen_grant_mask
-                    assign mask_hi[i] = (i >= g_ptr[j*CLOG2N +: CLOG2N]);
-                    assign req_hi[i]  = col_req[i] &  mask_hi[i];
-                    assign req_lo[i]  = col_req[i] & ~mask_hi[i];
-                end
-                assign grant[j*N +: N] = (|req_hi) ? (req_hi & ~(req_hi - 1'b1))
-                                                   : (req_lo & ~(req_lo - 1'b1));
-            end
-
-            // ---- accept stage (source side) ----
-            wire [N*M-1:0] accept;
-            for (i = 0; i < N; i = i + 1) begin : gen_accept
-                wire [M-1:0] row_grant;
-                for (j = 0; j < M; j = j + 1) begin : gen_accept_row
-                    assign row_grant[j] = grant[j*N + i];
-                end
-                wire [M-1:0] mask_hi;
-                wire [M-1:0] req_hi;
-                wire [M-1:0] req_lo;
-                for (j = 0; j < M; j = j + 1) begin : gen_accept_mask
-                    assign mask_hi[j] = (j >= a_ptr[i*CLOG2M +: CLOG2M]);
-                    assign req_hi[j]  = row_grant[j] &  mask_hi[j];
-                    assign req_lo[j]  = row_grant[j] & ~mask_hi[j];
-                end
-                assign accept[i*M +: M] = (|req_hi) ? (req_hi & ~(req_hi - 1'b1))
-                                                    : (req_lo & ~(req_lo - 1'b1));
-            end
-
-            // ---- match flags for this pass ----
-            wire [N-1:0] src_match;
-            wire [M-1:0] dst_match;
-            wire [M*N-1:0] dst_col;   // dst_col[j*N+i] = source i accepted dest j
-            for (i = 0; i < N; i = i + 1) begin : gen_src_match
-                assign src_match[i] = |(accept[i*M +: M]);
-            end
-            for (j = 0; j < M; j = j + 1) begin : gen_dst_col
-                for (i = 0; i < N; i = i + 1) begin : gen_dst_col_bit
-                    assign dst_col[j*N + i] = accept[i*M + j];
-                end
-            end
-            for (j = 0; j < M; j = j + 1) begin : gen_dst_match
-                assign dst_match[j] = |(dst_col[j*N +: N]);
             end
         end
     endgenerate
 
     //=========================================================================
-    // Final match = union of all passes (passes are disjoint, so OR is exact).
+    // Column rotation: logical column jp reads physical column (jp+delta)%P.
+    // Stage d then visits cells (i, (i+d)%P) of the logical matrix.
     //=========================================================================
-    wire [N*M-1:0] final_accept;
+    wire [PP-1:0] req_w;
     generate
-        for (k = 0; k < N*M; k = k + 1) begin : gen_final_accept
-            wire [ITER-1:0] acc_bits;
-            for (t = 0; t < ITER; t = t + 1) begin : gen_final_accept_t
-                assign acc_bits[t] = gen_pass[t].accept[k];
+        for (i = 0; i < P; i = i + 1) begin : gen_rot_row
+            for (j = 0; j < P; j = j + 1) begin : gen_rot_bit
+                wire [CWP-1:0] pj;
+                assign pj = (j + delta >= P) ? (j + delta - P) : (j + delta);
+                assign req_w[i*P + j] = req_pad[i*P + pj] & rst_n;
             end
-            assign final_accept[k] = |acc_bits;
         end
     endgenerate
 
     //=========================================================================
-    // Augmenting (swap) phase: improve the matching SIZE (AUGMENT=1).
-    //
-    // A greedy iSLIP pass can waste an opportunity when a source with several
-    // grants accepts one, and a destination it was granted cannot be re-matched
-    // (its only requester is already matched).  A length-3 augmenting path
-    // recovers one such opportunity: an unmatched source i "borrows" a matched
-    // destination j (whose source k is rematchable), and k moves to an
-    // alternative unmatched destination l.  Implemented as two lowest-index
-    // matchings:
-    //   A: unmatched sources i     -> releasable destinations j (matched to a
-    //                                 rematchable source)  [i "takes" j]
-    //   B: displaced sources k     -> alternative (unmatched) destinations l
-    //
-    // This stage never decreases the size (a completed swap is +1, an
-    // incomplete move is +0), but a parallel round can leave a displaced
-    // source without its alternative.  It is therefore a SIZE optimization
-    // only; the residual fill below is what guarantees maximality.
+    // P-stage torus wavefront.  Stage d visits cells (i, (i+d)%P).  Each stage
+    // has one cell per row and per column, so all P cells are independent.
     //=========================================================================
-    wire [N*M-1:0] augment_accept;
+    wire [2*P*(P+1)-1:0] free_stage;
+    assign free_stage[0 +: P] = {P{1'b1}};          // row_free before stage 0
+    assign free_stage[P +: P] = {P{1'b1}};          // col_free before stage 0
+
+    wire [PP-1:0] grant_w;
     generate
-        if (AUGMENT != 0) begin : gen_augment
+        for (d = 0; d < P; d = d + 1) begin : gen_stage
+            wire [P-1:0] rf;
+            wire [P-1:0] cf;
+            assign rf = free_stage[d*2*P +: P];
+            assign cf = free_stage[d*2*P+P +: P];
 
-            // ---- greedy match flags ----
-            wire [N-1:0] src_matched;
-            wire [M-1:0] dst_matched;
-            for (i = 0; i < N; i = i + 1) begin : gen_a_sm
-                assign src_matched[i] = |(final_accept[i*M +: M]);
+            for (i = 0; i < P; i = i + 1) begin : gen_cell
+                localparam integer J = (i + d) % P;
+                // grant = R & N & W; token updates are factored so the
+                // critical path through a token is only an AND and a NAND.
+                assign grant_w[i*P + J] = req_w[i*P + J] & rf[i] & cf[J];
+                assign free_stage[(d+1)*2*P + i] = rf[i]
+                                                 & ~(req_w[i*P + J] & cf[J]);
+                assign free_stage[(d+1)*2*P + P + J] = cf[J]
+                                                 & ~(req_w[i*P + J] & rf[i]);
             end
-            for (j = 0; j < M; j = j + 1) begin : gen_a_dm
-                wire [N-1:0] col;
-                for (i = 0; i < N; i = i + 1) begin : gen_a_dm_bit
-                    assign col[i] = final_accept[i*M + j];
-                end
-                assign dst_matched[j] = |col;
-            end
-
-            // ---- rematchable[k]: matched k has an alternative unmatched requested dest ----
-            wire [N-1:0] rematchable;
-            for (k = 0; k < N; k = k + 1) begin : gen_a_rematch
-                wire [M-1:0] alt_mask;
-                for (l = 0; l < M; l = l + 1) begin : gen_a_alt
-                    assign alt_mask[l] = eff_req[k*M + l] & ~dst_matched[l];
-                end
-                assign rematchable[k] = src_matched[k] & (|alt_mask);
-            end
-
-            // ---- releasable[j]: dest j is matched to a rematchable source ----
-            wire [M-1:0] releasable;
-            for (j = 0; j < M; j = j + 1) begin : gen_a_releasable
-                wire [N-1:0] terms;
-                for (k = 0; k < N; k = k + 1) begin : gen_a_rel_bit
-                    assign terms[k] = final_accept[k*M + j] & rematchable[k];
-                end
-                assign releasable[j] = |terms;
-            end
-
-            // ---- Matching A: unmatched sources -> releasable destinations ----
-            wire [M*N-1:0] grantS;   // grantS[j*N + i]
-            for (j = 0; j < M; j = j + 1) begin : gen_a_grantS
-                wire [N-1:0] col;
-                for (i = 0; i < N; i = i + 1) begin : gen_a_grantS_bit
-                    assign col[i] = ~src_matched[i] & eff_req[i*M + j] & releasable[j];
-                end
-                assign grantS[j*N +: N] = col & ~(col - 1'b1);
-            end
-            wire [N*M-1:0] swap_accept;   // swap_accept[i*M + j]
-            for (i = 0; i < N; i = i + 1) begin : gen_a_swap
-                wire [M-1:0] row;
-                for (j = 0; j < M; j = j + 1) begin : gen_a_swap_bit
-                    assign row[j] = grantS[j*N + i];
-                end
-                assign swap_accept[i*M +: M] = row & ~(row - 1'b1);
-            end
-
-            // ---- j_taken[j] = dest j taken by a swap; displaced[k] = k's dest taken ----
-            wire [M-1:0] j_taken;
-            for (j = 0; j < M; j = j + 1) begin : gen_a_jtaken
-                wire [N-1:0] col;
-                for (i = 0; i < N; i = i + 1) begin : gen_a_jtaken_bit
-                    assign col[i] = swap_accept[i*M + j];
-                end
-                assign j_taken[j] = |col;
-            end
-            wire [N-1:0] displaced;
-            for (k = 0; k < N; k = k + 1) begin : gen_a_displaced
-                wire [M-1:0] terms;
-                for (j = 0; j < M; j = j + 1) begin : gen_a_displaced_bit
-                    assign terms[j] = final_accept[k*M + j] & j_taken[j];
-                end
-                assign displaced[k] = |terms;
-            end
-
-            // ---- Matching B: displaced sources -> alternative (unmatched) dests ----
-            wire [M*N-1:0] grantM;   // grantM[l*N + k]
-            for (l = 0; l < M; l = l + 1) begin : gen_a_grantM
-                wire [N-1:0] col;
-                for (k = 0; k < N; k = k + 1) begin : gen_a_grantM_bit
-                    assign col[k] = displaced[k] & eff_req[k*M + l] & ~dst_matched[l];
-                end
-                assign grantM[l*N +: N] = col & ~(col - 1'b1);
-            end
-            wire [N*M-1:0] move;   // move[k*M + l]
-            for (k = 0; k < N; k = k + 1) begin : gen_a_move
-                wire [M-1:0] row;
-                for (l = 0; l < M; l = l + 1) begin : gen_a_move_bit
-                    assign row[l] = grantM[l*N + k];
-                end
-                assign move[k*M +: M] = row & ~(row - 1'b1);
-            end
-
-            // ---- combine ----
-            for (i = 0; i < N; i = i + 1) begin : gen_a_combine
-                for (j = 0; j < M; j = j + 1) begin : gen_a_combine_bit
-                    assign augment_accept[i*M + j] =
-                        src_matched[i] ? (displaced[i] ? move[i*M + j] : final_accept[i*M + j])
-                                       : swap_accept[i*M + j];
-                end
-            end
-        end else begin : gen_no_augment
-            assign augment_accept = final_accept;
         end
     endgenerate
 
     //=========================================================================
-    // Residual fill: GUARANTEED maximality for every N/M and every request.
-    //
-    // Adding a match to an existing matching can never create a new "wasted"
-    // pair: a wasted pair needs BOTH endpoints unmatched, and adding an edge
-    // only removes endpoints from the unmatched sets.  It is therefore enough
-    // to resolve the residual graph (sources still unmatched x destinations
-    // still free) with a MAXIMAL matching, and the union is maximal.
-    //
-    // The residual is matched by a serial dictatorship in a fixed source
-    // order: if source i is still unmatched, it takes a requested destination
-    // that is still free.  Maximality proof: suppose a requested pair (i,j)
-    // remains with source i unmatched and destination j free at the end.  The
-    // free set only shrinks, so j was still free when source i was processed;
-    // source i would then have taken some destination and could not remain
-    // unmatched.  Contradiction.
-    //
-    // Properties:
-    //   - only ADDS grants (never moves or drops one), so orthogonality is
-    //     preserved and the matching size cannot decrease;
-    //   - repairs the rare incomplete swap (a displaced source that found no
-    //     alternative is re-matched here);
-    //   - works for any N and M, including non-power-of-two and 10x10;
-    //   - per-source destination preference follows a_ptr, so a source served
-    //     only by the fill still rotates over its destinations.
+    // Inverse column rotation: physical (i,j) <- logical (i, (j-delta)%P).
     //=========================================================================
-    wire [N-1:0] aug_src_matched;
-    wire [M-1:0] aug_dst_matched;
+    wire [NM-1:0] match_accept;
     generate
-        for (i = 0; i < N; i = i + 1) begin : gen_fill_sm
-            assign aug_src_matched[i] = |(augment_accept[i*M +: M]);
-        end
-        for (j = 0; j < M; j = j + 1) begin : gen_fill_dm
-            wire [N-1:0] col;
-            for (i = 0; i < N; i = i + 1) begin : gen_fill_dm_bit
-                assign col[i] = augment_accept[i*M + j];
+        for (i = 0; i < N; i = i + 1) begin : gen_inv_row
+            for (j = 0; j < M; j = j + 1) begin : gen_inv_bit
+                wire [CWP-1:0] lj;
+                assign lj = (j >= delta) ? (j - delta)
+                                         : (j + P - delta);
+                assign match_accept[i*M + j] = grant_w[i*P + lj] & rst_n;
             end
-            assign aug_dst_matched[j] = |col;
         end
     endgenerate
 
-    // fill_free[i*M +: M] = destinations still free before source i's turn.
-    wire [M*(N+1)-1:0] fill_free;
-    wire [N*M-1:0]     fill_accept;   // fill_accept[i*M+j] = source i takes dest j
-    assign fill_free[0 +: M] = ~aug_dst_matched;
-
-    generate
-        for (i = 0; i < N; i = i + 1) begin : gen_fill
-            // candidate destinations: requested, still free, source unmatched
-            wire [M-1:0] cand;
-            for (j = 0; j < M; j = j + 1) begin : gen_fill_cand
-                assign cand[j] = ~aug_src_matched[i]
-                               & eff_req[i*M + j]
-                               & fill_free[i*M + j];
-            end
-            // round-robin destination preference from a_ptr[i] (mask split at
-            // the pointer, as in the iSLIP accept stage)
-            wire [M-1:0] mask_hi;
-            wire [M-1:0] req_hi;
-            wire [M-1:0] req_lo;
-            for (j = 0; j < M; j = j + 1) begin : gen_fill_mask
-                assign mask_hi[j] = (j >= a_ptr[i*CLOG2M +: CLOG2M]);
-                assign req_hi[j]  = cand[j] &  mask_hi[j];
-                assign req_lo[j]  = cand[j] & ~mask_hi[j];
-            end
-            wire [M-1:0] pick;
-            assign pick = (|req_hi) ? (req_hi & ~(req_hi - 1'b1))
-                                    : (req_lo & ~(req_lo - 1'b1));
-            assign fill_accept[i*M +: M] = pick;
-            assign fill_free[(i+1)*M +: M] = fill_free[i*M +: M] & ~pick;
-        end
-    endgenerate
-
-    // Final matching = augmented matching + residual fill (disjoint by
-    // construction: the fill only uses sources/destinations left unmatched).
-    wire [N*M-1:0] match_accept;
-    assign match_accept = augment_accept | fill_accept;
+    assign any_grant = |match_accept;
 
     //=========================================================================
     // Outputs.
     //=========================================================================
-    assign o_grant_rand_vld = match_accept;   // flat -> 2-D port, bit (i,j)=i*M+j
+    assign o_grant_rand_vld = match_accept;
 
     generate
         for (i = 0; i < N; i = i + 1) begin : gen_out_src_vld
@@ -480,12 +179,12 @@ module fair_arbiter #(
 
     generate
         for (i = 0; i < N; i = i + 1) begin : gen_out_src_ptr
-            for (b = 0; b < CLOG2M; b = b + 1) begin : gen_out_src_ptr_bit
+            for (j = 0; j < CWM; j = j + 1) begin : gen_out_src_ptr_bit
                 wire [M-1:0] terms;
-                for (j = 0; j < M; j = j + 1) begin : gen_out_src_ptr_term
-                    assign terms[j] = match_accept[i*M + j] & ((j >> b) & 1'b1);
+                for (b = 0; b < M; b = b + 1) begin : gen_out_src_ptr_term
+                    assign terms[b] = match_accept[i*M + b] & ((b >> j) & 1'b1);
                 end
-                assign o_grant_src_ptr[i][b] = |terms;
+                assign o_grant_src_ptr[i][j] = |terms;
             end
         end
     endgenerate
@@ -502,7 +201,7 @@ module fair_arbiter #(
 
     generate
         for (j = 0; j < M; j = j + 1) begin : gen_out_dest_ptr
-            for (b = 0; b < CLOG2N; b = b + 1) begin : gen_out_dest_ptr_bit
+            for (b = 0; b < CWN; b = b + 1) begin : gen_out_dest_ptr_bit
                 wire [N-1:0] terms;
                 for (i = 0; i < N; i = i + 1) begin : gen_out_dest_ptr_term
                     assign terms[i] = match_accept[i*M + j] & ((i >> b) & 1'b1);
@@ -511,93 +210,6 @@ module fair_arbiter #(
             end
         end
     endgenerate
-
-    //=========================================================================
-    // Pointer update (one always block per pointer element).
-    //
-    // A pointer advances ONLY on the first-pass match, and to "one past" the
-    // matched partner.  A partner granted but not accepted stays at the head
-    // of the line for the next cycle, keeping contention fair and minimizing
-    // reordering.  Later-pass matches do not advance pointers (standard iSLIP).
-    //=========================================================================
-    generate
-        for (j = 0; j < M; j = j + 1) begin : gen_g_ptr
-            if (PTR_RESET) begin : gen_g_ptr_rst
-                always @(posedge clk or negedge rst_n) begin
-                    if (!rst_n) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= j % N;   // staggered reset: dest j starts at source j
-                    end else if ((|gen_pass[0].dst_col[j*N +: N]) && (onehot_idx_n(gen_pass[0].dst_col[j*N +: N]) == (N-1))) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= {CLOG2N{1'b0}};        // wrap
-                    end else if (|gen_pass[0].dst_col[j*N +: N]) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= onehot_idx_n(gen_pass[0].dst_col[j*N +: N]) + 1'b1; // advance
-                    end
-                end
-            end else begin : gen_g_ptr_norst
-                always @(posedge clk) begin
-                    if ((|gen_pass[0].dst_col[j*N +: N]) && (onehot_idx_n(gen_pass[0].dst_col[j*N +: N]) == (N-1))) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= {CLOG2N{1'b0}};        // wrap
-                    end else if (|gen_pass[0].dst_col[j*N +: N]) begin
-                        g_ptr[j*CLOG2N +: CLOG2N] <= onehot_idx_n(gen_pass[0].dst_col[j*N +: N]) + 1'b1; // advance
-                    end
-                end
-            end
-        end
-    endgenerate
-
-    generate
-        for (i = 0; i < N; i = i + 1) begin : gen_a_ptr
-            if (PTR_RESET) begin : gen_a_ptr_rst
-                always @(posedge clk or negedge rst_n) begin
-                    if (!rst_n) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= i % M;   // staggered reset: source i starts at dest i
-                    end else if ((|gen_pass[0].accept[i*M +: M]) && (onehot_idx_m(gen_pass[0].accept[i*M +: M]) == (M-1))) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= {CLOG2M{1'b0}};        // wrap
-                    end else if (|gen_pass[0].accept[i*M +: M]) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= onehot_idx_m(gen_pass[0].accept[i*M +: M]) + 1'b1; // advance
-                    end
-                end
-            end else begin : gen_a_ptr_norst
-                always @(posedge clk) begin
-                    if ((|gen_pass[0].accept[i*M +: M]) && (onehot_idx_m(gen_pass[0].accept[i*M +: M]) == (M-1))) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= {CLOG2M{1'b0}};        // wrap
-                    end else if (|gen_pass[0].accept[i*M +: M]) begin
-                        a_ptr[i*CLOG2M +: CLOG2M] <= onehot_idx_m(gen_pass[0].accept[i*M +: M]) + 1'b1; // advance
-                    end
-                end
-            end
-        end
-    endgenerate
-
-    //=========================================================================
-    // One-hot to binary index (used only on the pointer-update path, and only
-    // two of them, so kept as small functions for readability).  onehot has at
-    // most one bit set; returns its index (0 if none).
-    //=========================================================================
-    function automatic [CLOG2N-1:0] onehot_idx_n;
-        input [N-1:0] onehot;
-        integer k;
-        reg [CLOG2N-1:0] idx;
-        begin
-            idx = {CLOG2N{1'b0}};
-            for (k = 0; k < N; k = k + 1)
-                if (onehot[k])
-                    idx = k;
-            onehot_idx_n = idx;
-        end
-    endfunction
-
-    function automatic [CLOG2M-1:0] onehot_idx_m;
-        input [M-1:0] onehot;
-        integer k;
-        reg [CLOG2M-1:0] idx;
-        begin
-            idx = {CLOG2M{1'b0}};
-            for (k = 0; k < M; k = k + 1)
-                if (onehot[k])
-                    idx = k;
-            onehot_idx_m = idx;
-        end
-    endfunction
 
 endmodule
 

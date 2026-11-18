@@ -1,10 +1,10 @@
 # Fair Arbiter - Scheduling Performance
 
 Benchmark: `tb/tb_perf.sv` (Icarus Verilog). Per config: 100-cycle warmup plus
-1500 cycles of full-crossbar and 1500 cycles of Bernoulli(0.5), PTR_RESET=1,
-with STAGGERED pointer reset (g_ptr[j]=j mod N, a_ptr[i]=i mod M).  1500 samples
-per traffic type give a standard error far below one percentage point of
-min(N,M).
+1500 cycles of full-crossbar and 1500 cycles of Bernoulli(0.5), PTR_RESET=1.
+The default WFA uses a rotating start offset δ; the iSLIP reference uses
+staggered pointer reset (g_ptr[j]=j mod N, a_ptr[i]=i mod M).  1500 samples per
+traffic type give a standard error far below one percentage point of min(N,M).
 
 Metrics:
 - **first** = matches in the first cycle of full-crossbar traffic.
@@ -12,7 +12,31 @@ Metrics:
 - **full** = average matches/cycle under full-crossbar (100% load).
 - **bern** = average matches/cycle under Bernoulli(0.5) random traffic.
 
-## Results
+## WFA (default) results
+
+1500 cycles per traffic type, PTR_RESET=1.  The WFA start offset δ rotates on
+each grant; full crossbar is 100% from the first cycle for every shape.
+
+| NxM | first | converge | full (of min) | bern (of min) |
+|-----|-------|----------|---------------|---------------|
+| 4x4 | 4 | 0 | 4.00/4 (100%) | 3.25/4 (81%) |
+| 8x8 | 8 | 0 | 8.00/8 (100%) | 6.88/8 (86%) |
+| 10x10 | 10 | 0 | 10.00/10 (100%) | 8.95/10 (89%) |
+| 16x16 | 16 | 0 | 16.00/16 (100%) | 14.75/16 (92%) |
+| 8x4 | 4 | 0 | 4.00/4 (100%) | 4.00/4 (100%) |
+| 4x8 | 4 | 0 | 4.00/4 (100%) | 3.91/4 (98%) |
+| 9x11 | 9 | 0 | 9.00/9 (100%) | 8.61/9 (96%) |
+| 11x9 | 9 | 0 | 9.00/9 (100%) | 8.63/9 (96%) |
+
+The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
+versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
+300 to 38 gate levels and the cell count from 11,821 to 3,865.
+
+## iSLIP reference results (old default)
+
+The table below is the earlier `ITER`/`AUGMENT` iSLIP + residual-fill design,
+kept for comparison.  Its pointers reset to a staggered diagonal
+(`g_ptr[j]=j mod N`, `a_ptr[i]=i mod M`).
 
 Long run: 1500 cycles per traffic type (after 100-cycle warmup).
 
@@ -39,7 +63,7 @@ Long run: 1500 cycles per traffic type (after 100-cycle warmup).
 | 9x11 | 4 | 1 | 9 | 0 | 9.00/9 (100%) | 8.99/9 (100%) |
 | 11x9 | 4 | 1 | 9 | 0 | 9.00/9 (100%) | 8.99/9 (100%) |
 
-## Guaranteed maximal matching (AUGMENT + residual fill)
+## Maximal matching proof (WFA default; iSLIP fill reference)
 
 **Hard criterion (checked by `tb/tb_maximal.sv` and
 `scripts/verify_maximal.py`)**: a cycle is an error if some `req[i][j]` has
@@ -84,7 +108,7 @@ backpressure re-drawn every cycle and six rotating traffic modes:
 | 10x10 soak | 20000 | 10x10 ITER=4 AUG=1 | 0 | 0 / 0 / 0 / 0 |
 
 The 20,000-cycle 10x10 run alone covers 720,096 effective request instants and
-154,561 grants, with maximality checked on the effective (post-backpressure)
+144,315 grants, with maximality checked on the effective (post-backpressure)
 request matrix every cycle.  All runs PASS.
 
 Algorithm-level verification (`scripts/verify_maximal.py`):
@@ -95,7 +119,8 @@ Algorithm-level verification (`scripts/verify_maximal.py`):
 - arbitrary (deliberately broken) base matchings repaired by the fill alone;
 - deterministic adversarial patterns on all shapes.
 
-Total: **67,118 cases, 0 failures**.
+Total: **94,475 WFA cases, 0 failures** (`scripts/verify_wfa.py`); the old
+iSLIP model `scripts/verify_maximal.py` reports 67,118 cases, 0 failures.
 
 Matching size (model, random p=0.5, 200 graphs, fraction of min(N,M)):
 
@@ -114,37 +139,28 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
 
 ## Key takeaways
 
-1. **Full-crossbar is immediately maximal**: with the staggered pointer reset,
-   the very first cycle dispatches min(N,M) matches (8 for 8x8, 16 for 16x16).
-   No desynchronization ramp-up.  This is what "输出被占满" requires.
+1. **Full-crossbar is immediately maximal**: the WFA grants a full permutation
+   in the first cycle for every shape (8x8 -> 8, 10x10 -> 10, 16x16 -> 16).
 
-2. **ITER only matters for random (non-uniform) traffic**:
-   - `first`/`converge`/`full` are already optimal for every ITER.
-   - With `AUGMENT=0`, two passes are enough to saturate: 8x8 stays at 89%
-     for ITER=1/2/4; 10x10 stays at 91% for ITER=1/4.
-   - With `AUGMENT=1`, ITER still helps: 8x8 91% (I1) -> 97% (I2/I4), 10x10
-     94% (I1) -> 98% (I2/I4), 4x4 66% -> 84% (AUG only).  ITER=4 is within
-     measurement noise of ITER=2 at 8x8 and 10x10.
+2. **WFA trades matching size for depth**: random square traffic is 81% (4x4),
+   86% (8x8), 89% (10x10), 92% (16x16), and 96-100% for N!=M.  The old
+   iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
+   at 10x10 versus 38 for the WFA.
 
-3. **AUGMENT buys 1-18 points of random-traffic matching size**:
-   4x4 66% -> 84%, 8x8 89% -> 97%, 10x10 91% -> 98%, 16x16 94% -> 95%.
-   For N!=M the aspect ratio already gives ~100%, so AUGMENT changes little
-   there (8x4/4x8/9x11/11x9 are all ~100%).
+3. **Depth/area (10x10)**: 3865 cells / 38 levels / 4 flops for the WFA,
+   versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The WFA removes
+   the ITER unrolling, the augmenting swap and the serial residual fill.
 
-4. **Aspect ratio**:
-   - N > M (8x4, dest-limited): 100% even without extra work.
-   - N < M (4x8, source-limited): 100% with the swap.
-   - Square 16x16 keeps 94-95% because a 16-way conflict is harder to resolve
-     in one cycle, but the residual fill still guarantees maximality.
+4. **Fairness is count-fair, not strict-order**: δ rotates every diagonal, so
+   every source/destination gets priority in turn; long-run counts are balanced
+   and starvation does not occur.  The two port sides rotate in opposite
+   directions, so a strict 0,1,2,... order on both sides is not preserved.
+   This is the documented tradeoff for the depth reduction.
 
-5. **Recommendation**:
-   - **Maximum throughput (default)**: `ITER=4, AUGMENT=1` - maximal every
-     cycle, 97-98% matching size at 8x8/10x10, 95% at 16x16.
-   - **PPA sweet spot**: `ITER=2, AUGMENT=1` - same 97-98% at 8x8/10x10 for
-     ~35% fewer cells than ITER=4 (see `docs/ppa.md`).
-   - **Minimum area / strict fairness**: `ITER=1, AUGMENT=0` - still maximal
-     every cycle thanks to the residual fill, 89-91% square sizes and ~100%
-     for N!=M.
-   - ITER=1 is enough for uniform/high-load traffic (full crossbar is 100% on
-     the first cycle); extra iterations and the swap mainly help bursty /
-     random traffic.
+5. **P > 10 exceeds the 40-level target**: 9x11 = 40, 11x9 = 44, 16x16 = 48.
+   Optimize by retiming the output encoders (11x9) or by a 2-cycle pipelined
+   wavefront / 4x4 hierarchical split (P=16).  See `docs/ppa.md` and
+   `diagram/circuit/wfa_05_depth.png`.
+
+The iSLIP reference table above is kept to show the 97-98% matching-size
+reference point; it is no longer the default RTL.

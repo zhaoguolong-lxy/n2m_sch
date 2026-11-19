@@ -154,7 +154,7 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| WFA + single-side RR override (fast default) | **27** | **34** | **36** | **36** | out of target |
+| WFA + single-side RR override (fast default) | **28** | **35** | **37** | **36** | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 73 | 76 | 78 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
@@ -166,10 +166,10 @@ Default WFA + single-side RR override:
 
 | Config | cells | levels |
 |--------|-------|--------|
-| 8x8 | 3038 | 27 |
-| 10x10 | 5925 | 34 |
-| 9x11 | 5847 | 36 |
-| 11x9 | 5808 | 36 |
+| 8x8 | 3051 | 28 |
+| 10x10 | 5488 | 35 |
+| 9x11 | 5427 | 37 |
+| 11x9 | 5394 | 36 |
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -209,24 +209,13 @@ valid path.  Three further tricks remove the remaining OR trees:
    turns the 3:1 output mux into a 2:1 mux.
 
 At 10x10 this takes the source-valid path from 35 to 26 levels and the
-destination-valid path from 34 to 30.  The same idea is applied to the pointer
-outputs: the override pointer (the RR index `ix_s` / `ix_d`, or the single
-active partner) is computed in parallel, and the WFA pointer - which comes from
-the matcher - passes through only one 2:1 select.  That takes the pointer path
-from 35 to 34 levels.
-
-Full design at 10x10: 36 -> 34 levels.  Cells go from 5301 to 5925 (+12%),
-mostly because the core pointer encoders are now live alongside the override
-paths instead of behind a single 3:1 mux.  8x8 stays on the plain path
-(27 levels; the 28 -> 27 difference is mapping noise, the logic is unchanged).
-9x11 and 11x9 drop one level (37 -> 36).
-
-The remaining 34 levels are matcher (29) + index OR (2) + output select (3).
-The matcher is input rotate + P wavefront stages + inverse rotate; P=10 stages
-of `AND + NOR` are inherent to single-cycle maximality, so a generic-gate
-single-cycle design cannot go much below this.  Further reduction needs
-compound standard cells (AOI21/OAI21 collapse each stage to one gate level) or
-a 2-cycle pipeline, which changes the latency contract.
+destination-valid path from 34 to 31; the full design goes from 36 to 35
+levels for about +4% cells (the area cost is the duplicated per-path OR /
+select logic).  Fusion is gated off for N < 10 and M < 10, so 8x8 keeps its
+plain path.  9x11 / 11x9 stay within the 40-level target.  The pointer
+encoders are now the critical path (35 levels: matcher + index OR), which is
+inherent to the single-cycle design, so further reduction needs compound
+standard cells or a 2-cycle pipeline.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level
@@ -252,4 +241,4 @@ is relaxed.  Single-source and single-destination sequences are strict RR
 (42/42 tests).
 
 The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
-default fast variant is 5,925 / 34, and the old iSLIP+fill is 11,821 / 300.
+default fast variant is 5,488 / 35, and the old iSLIP+fill is 11,821 / 300.

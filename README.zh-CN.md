@@ -43,7 +43,7 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [fair 变体：iSLIP 首轮 + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
-（`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 **5488 cells / 35 级**；覆盖逻辑与 WFA 并行，关键路径仍是 WFA。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配，混合流量 per-port RR 顺序仍是 WFA 的计数/覆盖公平；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（28/35/37/36），16x16 不在本变体目标内。
+（`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 **5149 cells / 35 级**；覆盖逻辑与 WFA 并行，关键路径仍是 WFA。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配，混合流量 per-port RR 顺序仍是 WFA 的计数/覆盖公平；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（28/35/36/35），16x16 不在本变体目标内。
 
 ## fast / fair 两个版本
 
@@ -51,8 +51,8 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 
 | 版本 | RTL | 单源/单目的严格 RR | 多源公平 | 10x10 PPA |
 |------|-----|--------------------|----------|-----------|
-| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | WFA 统计公平（计数/覆盖） | **5488 cells / 35 级** |
-| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill，平均 Jain 更高 | 5474 cells / 73 级 |
+| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | WFA 统计公平（计数/覆盖） | **5149 cells / 35 级** |
+| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill，平均 Jain 更高 | 5119 cells / 74 级 |
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
 
 fair 版验证：主回归 295,848 checks PASS；极大性 18/18；4 形状 soak × 1500

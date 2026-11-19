@@ -20,9 +20,7 @@ module wfa_core #(
     input  wire [M-1:0]              i_dest_bp,
     output wire [N*M-1:0]            o_grant_flat,
     output wire [N-1:0]              o_src_vld,
-    output wire [N-1:0][$clog2(M)-1:0] o_src_ptr,
-    output wire [M-1:0]              o_dest_vld,
-    output wire [M-1:0][$clog2(N)-1:0] o_dest_ptr
+    output wire [M-1:0]              o_dest_vld
 );
 
     localparam integer CWN = $clog2(N);
@@ -225,19 +223,6 @@ module wfa_core #(
     endgenerate
 
     generate
-        for (i = 0; i < N; i = i + 1) begin : gen_out_src_ptr
-            for (b = 0; b < CWM; b = b + 1) begin : gen_out_src_ptr_bit
-                wire [M-1:0] terms;
-                for (j = 0; j < M; j = j + 1) begin : gen_out_src_ptr_term
-                    assign terms[j] = match_accept[i*M + j]
-                                    & ((j >> b) & 1'b1);
-                end
-                assign o_src_ptr[i][b] = |terms;
-            end
-        end
-    endgenerate
-
-    generate
         if (P >= 10) begin : gen_out_dest_vld_fused
             // The final column token is free iff the column never got a grant.
             // It lives in the rotated space, so apply the same inverse
@@ -256,19 +241,6 @@ module wfa_core #(
                     assign col[i] = match_accept[i*M + j];
                 end
                 assign o_dest_vld[j] = |col;
-            end
-        end
-    endgenerate
-
-    generate
-        for (j = 0; j < M; j = j + 1) begin : gen_out_dest_ptr
-            for (b = 0; b < CWN; b = b + 1) begin : gen_out_dest_ptr_bit
-                wire [N-1:0] terms;
-                for (i = 0; i < N; i = i + 1) begin : gen_out_dest_ptr_term
-                    assign terms[i] = match_accept[i*M + j]
-                                    & ((i >> b) & 1'b1);
-                end
-                assign o_dest_ptr[j][b] = |terms;
             end
         end
     endgenerate

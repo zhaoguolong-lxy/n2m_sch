@@ -105,7 +105,7 @@ module fair_arbiter_fair #(
         .i_req_flat(res_req),
         .i_src_bp({N{1'b0}}), .i_dest_bp({M{1'b0}}),
         .o_grant_flat(fill_grant),
-        .o_src_vld(), .o_src_ptr(), .o_dest_vld(), .o_dest_ptr()
+        .o_src_vld(), .o_dest_vld()
     );
 
     wire [NM-1:0] match_accept;

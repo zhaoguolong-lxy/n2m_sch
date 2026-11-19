@@ -154,8 +154,8 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| WFA + single-side RR override (fast default) | **28** | **35** | **37** | **36** | out of target |
-| Fair variant: iSLIP first + WFA fill | 60 | 73 | 76 | 78 | out of target |
+| WFA + single-side RR override (fast default) | **28** | **35** | **36** | **35** | out of target |
+| Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
 
@@ -166,10 +166,10 @@ Default WFA + single-side RR override:
 
 | Config | cells | levels |
 |--------|-------|--------|
-| 8x8 | 3051 | 28 |
-| 10x10 | 5488 | 35 |
-| 9x11 | 5427 | 37 |
-| 11x9 | 5394 | 36 |
+| 8x8 | 2985 | 28 |
+| 10x10 | 5149 | 35 |
+| 9x11 | 5065 | 36 |
+| 11x9 | 5032 | 35 |
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -177,7 +177,7 @@ with the WFA, so the critical path is still the WFA path; the area increases
 because the RR selectors and a_ptr/g_ptr are duplicated.
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first pass + WFA fill):
-8x8 3146/60, 10x10 5474/73, 9x11 5316/76, 11x9 5860/78.  It adds the
+8x8 3069/60, 10x10 5119/74, 9x11 4963/74, 11x9 5606/76.  It adds the
 per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
 Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
@@ -209,13 +209,27 @@ valid path.  Three further tricks remove the remaining OR trees:
    turns the 3:1 output mux into a 2:1 mux.
 
 At 10x10 this takes the source-valid path from 35 to 26 levels and the
-destination-valid path from 34 to 31; the full design goes from 36 to 35
-levels for about +4% cells (the area cost is the duplicated per-path OR /
-select logic).  Fusion is gated off for N < 10 and M < 10, so 8x8 keeps its
-plain path.  9x11 / 11x9 stay within the 40-level target.  The pointer
-encoders are now the critical path (35 levels: matcher + index OR), which is
-inherent to the single-cycle design, so further reduction needs compound
-standard cells or a 2-cycle pipeline.
+destination-valid path from 34 to 30.  Fusion is gated off for N < 10 and
+M < 10, so 8x8 keeps its plain path.  The pointer encoders are now the
+critical path (35 levels: matcher + index OR), which is inherent to the
+single-cycle design, so further reduction needs compound standard cells or a
+2-cycle pipeline.
+
+Redundancy removal (same behaviour, fast and fair):
+
+- `src_ov` was `src_any[i] & s_pick_i[j]`; the row-any factor is redundant
+  because the RR pick is zero whenever the row has no request (the same holds
+  for `dst_ov`).  This drops 2 x N*M AND gates and one level from the
+  override paths.
+- `wfa_core` no longer exports `o_src_ptr` / `o_dest_ptr`: both wrappers
+  encode the pointers from the final match, so the core encoders were dead
+  logic that still loaded `match_accept` before ABC mapping.
+
+Net at 10x10: fast 5488 -> 5149 cells (-6%), depth unchanged at 35; fair
+5474 -> 5119 (-6.5%).  The request-mask network is still built once in the
+wrapper (`eff_req`) and once in the core: sharing it was measured, but it
+raises the `eff_req` fanout and cost two levels at 8x8, so each side keeps its
+own local mask.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level
@@ -241,4 +255,4 @@ is relaxed.  Single-source and single-destination sequences are strict RR
 (42/42 tests).
 
 The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
-default fast variant is 5,488 / 35, and the old iSLIP+fill is 11,821 / 300.
+default fast variant is 5,149 / 35, and the old iSLIP+fill is 11,821 / 300.

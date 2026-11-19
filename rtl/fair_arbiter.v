@@ -50,18 +50,20 @@ module fair_arbiter #(
     localparam integer NC=(N<M)?N:M, MC=(N>M)?N:M;
     genvar i,j,b;
 
+    // Masked request matrix for the single-side override.  The WFA core builds
+    // its own copy from the raw request and backpressure; sharing one matrix
+    // raises the fanout and is slower at small shapes.
+    wire [NM-1:0] eff_req;
+
     // WFA core (general traffic, maximal/no-waste)
     wire [NC*MC-1:0] core_req, core_grant;
     wire [NC-1:0] core_src_bp, core_src_vld;
     wire [MC-1:0] core_dest_bp, core_dest_vld;
-    wire [NC-1:0][$clog2(MC)-1:0] core_src_ptr;
-    wire [MC-1:0][$clog2(NC)-1:0] core_dest_ptr;
     wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET)) u_core (
         .clk(clk), .rst_n(rst_n), .i_req_flat(core_req),
         .i_src_bp(core_src_bp), .i_dest_bp(core_dest_bp),
         .o_grant_flat(core_grant), .o_src_vld(core_src_vld),
-        .o_src_ptr(core_src_ptr), .o_dest_vld(core_dest_vld),
-        .o_dest_ptr(core_dest_ptr)
+        .o_dest_vld(core_dest_vld)
     );
 
     wire [NM-1:0] wfa_match;
@@ -98,7 +100,6 @@ module fair_arbiter #(
     endgenerate
 
     // Effective request / row/col activity
-    wire [NM-1:0] eff_req;
     generate for (i=0;i<N;i=i+1) begin : g_eff_row
         for (j=0;j<M;j=j+1) begin : g_eff_bit
             assign eff_req[i*M+j] = i_src_dest_req[i][j] & rst_n
@@ -147,7 +148,9 @@ module fair_arbiter #(
         assign s_pick_i = (|s_hi_i) ? (s_hi_i & ~(s_hi_i - 1'b1))
                                     : (s_lo_i & ~(s_lo_i - 1'b1));
         for (j=0;j<M;j=j+1) begin : g_sov_out
-            assign src_ov[i*M+j] = src_any[i] & s_pick_i[j];
+            // s_pick_i is zero when the row has no request, so the row-any
+            // AND is redundant.
+            assign src_ov[i*M+j] = s_pick_i[j];
         end
         wire [CWM-1:0] ix_s = idx_m(s_pick_i);
         if (PTR_RESET) begin : ptr_rst
@@ -181,7 +184,8 @@ module fair_arbiter #(
         assign d_pick_j = (|d_hi_j) ? (d_hi_j & ~(d_hi_j - 1'b1))
                                     : (d_lo_j & ~(d_lo_j - 1'b1));
         for (i=0;i<N;i=i+1) begin : g_dov_out
-            assign dst_ov[i*M+j] = dst_any[j] & d_pick_j[i];
+            // d_pick_j is zero when the column has no request.
+            assign dst_ov[i*M+j] = d_pick_j[i];
         end
         wire [CWN-1:0] ix_d = idx_n(d_pick_j);
         if (PTR_RESET) begin : ptr_rst

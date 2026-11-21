@@ -154,8 +154,8 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| Multi-schedule WFA + override (fast default) | **30** | **35** | **37** | **38** | out of target |
-| Fair variant: iSLIP first + WFA fill | 56 | 72 | 72 | 73 | out of target |
+| Multi-schedule WFA + override (fast default) | **31** | **35** | **36** | **38** | out of target |
+| Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
 
@@ -166,10 +166,10 @@ Default WFA + single-side RR override:
 
 | Config | cells | levels |
 |--------|-------|--------|
-| 8x8 | 5341 | 30 |
-| 10x10 | 8902 | 35 |
-| 9x11 | 8906 | 37 |
-| 11x9 | 9212 | 38 |
+| 8x8 | 6655 | 31 |
+| 10x10 | 10711 | 35 |
+| 9x11 | 10426 | 36 |
+| 11x9 | 10692 | 38 |
 
 Multi-schedule WFA (default): `rtl/fair_arbiter.v` runs NSCHED wavefronts in
 parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
@@ -179,10 +179,10 @@ patterns):
 
 | Scheme | src Jain | dst Jain | 10x10 cells / levels |
 |--------|----------|----------|----------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 4786 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 6219 / 35 |
-| **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 8902 / 35 |
-| iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 4769 / 72 |
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
+| **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
 Saturated uniform traffic (K-regular graphs): every source asks K
 destinations and every destination is asked by K sources, i.e. full load with
@@ -220,7 +220,7 @@ with the WFA, so the critical path is still the WFA path; the area increases
 because the RR selectors and a_ptr/g_ptr are duplicated.
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first pass + WFA fill):
-8x8 2790/56, 10x10 4769/72, 9x11 4707/72, 11x9 5071/73.  It adds the
+8x8 3069/60, 10x10 5119/74, 9x11 4963/74, 11x9 5606/76.  It adds the
 per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
 Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
@@ -268,17 +268,13 @@ Redundancy removal (same behaviour, fast and fair):
   encode the pointers from the final match, so the core encoders were dead
   logic that still loaded `match_accept` before ABC mapping.
 
-Multi-schedule cleanup (same behaviour): the request mask is now built once in
-the wrapper and fanned out to the four cores in **two copies** (two schedules
-per copy) instead of four independent mask networks.  The `any_req` reduction
-and the delta counter are also single instances shared by all schedules (the
-cores advance in lockstep).  The core lost its own delta register and mask
-network; both wrappers feed `i_delta` / `i_any_req` explicitly.  Net at
-10x10: 10711 -> 8902 cells (-17%) at the same 35 levels; the fair variant
-drops from 5119/74 to 4769/72.  9x11 pays one extra level (36 -> 37) for the
-shared fanout, everything else is unchanged or better.  One copy for all four
-schedules costs another level at 9x11/11x9; four copies are worse (area and
-fanout), so two is the balance point.
+Net: with a single schedule the 10x10 fast wrapper drops from 5488 to 5149
+cells (-6%) at the same 35 levels, and the fair variant from 5474 to 5119
+(-6.5%).  The multi-schedule default adds the extra wavefronts on top (10711
+cells / 35 levels).  The request-mask network is still built once in the
+wrapper (`eff_req`) and once in the core: sharing it was measured, but it
+raises the `eff_req` fanout and cost two levels at 8x8, so each side keeps its
+own local mask.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level
@@ -304,4 +300,4 @@ is relaxed.  Single-source and single-destination sequences are strict RR
 (42/42 tests).
 
 The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
-default fast variant is 8,902 / 35, and the old iSLIP+fill is 11,821 / 300.
+default fast variant is 5,149 / 35, and the old iSLIP+fill is 11,821 / 300.

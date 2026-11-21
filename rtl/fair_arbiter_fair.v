@@ -37,7 +37,6 @@ module fair_arbiter_fair #(
     output wire [M-1:0][$clog2(N)-1:0] o_grant_dest_ptr
 );
     localparam integer CWN=$clog2(N), CWM=$clog2(M), NM=N*M;
-    localparam integer CWP=$clog2((N>M)?N:M);
     genvar i,j,b;
 
     wire [NM-1:0] eff_req;
@@ -99,33 +98,10 @@ module fair_arbiter_fair #(
         end
     end endgenerate
 
-    // WFA fill on residual (the mask is already folded into res_req)
+    // WFA fill on residual
     wire [NM-1:0] fill_grant;
-    wire any_req_fill;
-    assign any_req_fill = |res_req;
-
-    reg [CWP-1:0] delta;
-    generate
-        if (PTR_RESET) begin : gen_delta_rst
-            always @(posedge clk or negedge rst_n) begin
-                if (!rst_n) delta <= 0;
-                else if (any_req_fill) begin
-                    if (delta == ((N>M)?N:M)-1) delta <= 0;
-                    else delta <= delta + 1'b1;
-                end
-            end
-        end else begin : gen_delta_norst
-            always @(posedge clk) begin
-                if (any_req_fill) begin
-                    if (delta == ((N>M)?N:M)-1) delta <= 0;
-                    else delta <= delta + 1'b1;
-                end
-            end
-        end
-    endgenerate
-
-    wfa_core #(.N(N),.M(M),.PTR_RESET(PTR_RESET),.PRE_MASK(1)) u_fill (
-        .rst_n(rst_n), .i_delta(delta),
+    wfa_core #(.N(N),.M(M),.PTR_RESET(PTR_RESET)) u_fill (
+        .clk(clk), .rst_n(rst_n),
         .i_req_flat(res_req),
         .i_src_bp({N{1'b0}}), .i_dest_bp({M{1'b0}}),
         .o_grant_flat(fill_grant),

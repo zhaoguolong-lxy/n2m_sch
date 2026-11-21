@@ -2,8 +2,6 @@
 // wfa_core.v - internal Wavefront (WFA/WWFA) matching core.
 //
 // Flat internal interface (bit i*M+j), used by the fair_arbiter top wrapper.
-// The matching array is purely combinational; delta and the request mask are
-// owned by the wrapper (`i_delta`).
 // The TOP-LEVEL interface is defined in fair_arbiter.v and is exactly the
 // interface required by the project; this module is not a top-level port.
 //=============================================================================
@@ -13,11 +11,10 @@
 module wfa_core #(
     parameter integer N         = 8,
     parameter integer M         = 8,
-    parameter integer PTR_RESET = 1,
-    parameter integer PRE_MASK  = 0
+    parameter integer PTR_RESET = 1
 ) (
+    input  wire                      clk,
     input  wire                      rst_n,
-    input  wire [$clog2((N>M)?N:M)-1:0] i_delta,
     input  wire [N*M-1:0]            i_req_flat,
     input  wire [N-1:0]              i_src_bp,
     input  wire [M-1:0]              i_dest_bp,
@@ -83,14 +80,48 @@ module wfa_core #(
         for (i = 0; i < P; i = i + 1) begin : gen_pad_row
             for (j = 0; j < P; j = j + 1) begin : gen_pad_bit
                 if ((i < N) && (j < M)) begin : gen_real
-                    if (PRE_MASK) begin : gen_pre
-                        assign req_pad[i*P + j] = i_req_flat[i*M + j];
-                    end else begin : gen_raw
-                        assign req_pad[i*P + j] = i_req_flat[i*M + j] & rst_n
-                                                & ~i_src_bp[i] & ~i_dest_bp[j];
-                    end
+                    assign req_pad[i*P + j] = i_req_flat[i*M + j] & rst_n
+                                            & ~i_src_bp[i] & ~i_dest_bp[j];
                 end else begin : gen_dummy
                     assign req_pad[i*P + j] = 1'b0;
+                end
+            end
+        end
+    endgenerate
+
+    //=========================================================================
+    // Rotating column offset.  delta is the only sequential state.
+    //
+    // The enable is |req_pad (any effective request), not |match_accept.  For
+    // a maximal WFA any request produces at least one grant, so this is
+    // functionally equivalent, but it removes the long input -> wavefront ->
+    // any_req -> delta path from the delta D input.
+    //=========================================================================
+    reg [CWP-1:0] delta;
+    wire any_req;
+    assign any_req = |req_pad;
+
+    generate
+        if (PTR_RESET) begin : gen_d_rst
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) begin
+                    delta <= {CWP{1'b0}};
+                end else if (any_req) begin
+                    if (delta == P - 1) begin
+                        delta <= {CWP{1'b0}};
+                    end else begin
+                        delta <= delta + 1'b1;
+                    end
+                end
+            end
+        end else begin : gen_d_norst
+            always @(posedge clk) begin
+                if (any_req) begin
+                    if (delta == P - 1) begin
+                        delta <= {CWP{1'b0}};
+                    end else begin
+                        delta <= delta + 1'b1;
+                    end
                 end
             end
         end
@@ -104,7 +135,7 @@ module wfa_core #(
     generate
         for (i = 0; i < P; i = i + 1) begin : gen_rot_row
             if (i < N) begin : gen_rot_real
-                assign req_w[i*P +: P] = rot_plus(req_pad[i*P +: P], i_delta);
+                assign req_w[i*P +: P] = rot_plus(req_pad[i*P +: P], delta);
             end else begin : gen_rot_dummy
                 assign req_w[i*P +: P] = {P{1'b0}};
             end
@@ -146,7 +177,7 @@ module wfa_core #(
     wire [PP-1:0] grant_rot;
     generate
         for (i = 0; i < N; i = i + 1) begin : gen_inv_row
-            assign grant_rot[i*P +: P] = rot_minus(grant_w[i*P +: P], i_delta);
+            assign grant_rot[i*P +: P] = rot_minus(grant_w[i*P +: P], delta);
         end
     endgenerate
 
@@ -199,7 +230,7 @@ module wfa_core #(
             wire [P-1:0] col_free_final;
             wire [P-1:0] dest_vld_w;
             assign col_free_final = free_stage[P*2*P + P +: P];
-            assign dest_vld_w = rot_minus(col_free_final, i_delta);
+            assign dest_vld_w = rot_minus(col_free_final, delta);
             for (j = 0; j < M; j = j + 1) begin : gen_dv
                 assign o_dest_vld[j] = ~dest_vld_w[j];
             end

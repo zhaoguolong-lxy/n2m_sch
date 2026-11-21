@@ -11,7 +11,8 @@
 module wfa_core #(
     parameter integer N         = 8,
     parameter integer M         = 8,
-    parameter integer PTR_RESET = 1
+    parameter integer PTR_RESET = 1,
+    parameter integer WAVEFRONT_PLUS = 1
 ) (
     input  wire                      clk,
     input  wire                      rst_n,
@@ -101,32 +102,6 @@ module wfa_core #(
     wire any_req;
     assign any_req = |req_pad;
 
-    generate
-        if (PTR_RESET) begin : gen_d_rst
-            always @(posedge clk or negedge rst_n) begin
-                if (!rst_n) begin
-                    delta <= {CWP{1'b0}};
-                end else if (any_req) begin
-                    if (delta == P - 1) begin
-                        delta <= {CWP{1'b0}};
-                    end else begin
-                        delta <= delta + 1'b1;
-                    end
-                end
-            end
-        end else begin : gen_d_norst
-            always @(posedge clk) begin
-                if (any_req) begin
-                    if (delta == P - 1) begin
-                        delta <= {CWP{1'b0}};
-                    end else begin
-                        delta <= delta + 1'b1;
-                    end
-                end
-            end
-        end
-    endgenerate
-
     //=========================================================================
     // Request rotation: logical column j reads physical column (j+delta)%P.
     // Dummy rows are driven to 0 and do not instantiate a rotator.
@@ -138,6 +113,67 @@ module wfa_core #(
                 assign req_w[i*P +: P] = rot_plus(req_pad[i*P +: P], delta);
             end else begin : gen_rot_dummy
                 assign req_w[i*P +: P] = {P{1'b0}};
+            end
+        end
+    endgenerate
+
+    //=========================================================================
+    // Wavefront+ (Becker / Rasheed): advance delta to the diagonal after the
+    // first scan stage that has any request, instead of always delta+1.
+    //
+    // stage_present[d] is the OR of the requests on scan stage d, i.e. the
+    // wrapped diagonal (i, (i+d)%P) of the rotated matrix.  This OR tree only
+    // feeds the delta next-state register; the grant path from req to the
+    // outputs is unchanged.
+    //=========================================================================
+    wire [P-1:0] stage_present;
+    generate
+        for (d = 0; d < P; d = d + 1) begin : gen_stage_present
+            wire [P-1:0] terms;
+            for (i = 0; i < P; i = i + 1) begin : gen_present_cell
+                assign terms[i] = req_w[i*P + ((i + d) % P)];
+            end
+            assign stage_present[d] = |terms;
+        end
+    endgenerate
+
+    function automatic [CWP-1:0] lowest_set;
+        input [P-1:0] v;
+        integer k;
+        reg [CWP-1:0] r;
+        begin
+            r = {CWP{1'b0}};
+            for (k = P-1; k >= 0; k = k - 1)
+                if (v[k]) r = k;
+            lowest_set = r;
+        end
+    endfunction
+
+    wire [CWP-1:0] first_d;
+    assign first_d = lowest_set(stage_present);
+
+    wire [CWP:0] delta_sum;
+    assign delta_sum = {1'b0, delta} + {1'b0, first_d} + 1'b1;
+
+    wire [CWP-1:0] delta_wp;
+    assign delta_wp = (delta_sum >= P) ? (delta_sum - P)
+                                       : delta_sum[CWP-1:0];
+
+    wire [CWP-1:0] delta_plus1;
+    assign delta_plus1 = (delta == P-1) ? {CWP{1'b0}} : (delta + 1'b1);
+
+    wire [CWP-1:0] delta_next;
+    assign delta_next = WAVEFRONT_PLUS ? delta_wp : delta_plus1;
+
+    generate
+        if (PTR_RESET) begin : gen_d_rst
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) delta <= {CWP{1'b0}};
+                else if (any_req) delta <= delta_next;
+            end
+        end else begin : gen_d_norst
+            always @(posedge clk) begin
+                if (any_req) delta <= delta_next;
             end
         end
     endgenerate

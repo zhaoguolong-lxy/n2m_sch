@@ -254,13 +254,26 @@ per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
 Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
 WTF-style prototype (`rtl/fair_arbiter_wtf.v`, comparison only): iSLIP
-first pass + row-serial waterfall fill.  8x8 3100/122, 10x10 6924/187.
-It passes all 42 strict RR checks, all 18 maximality shapes (0 non-max
-cycles), and gives K-regular Jain 1.000 (random 10x10: 0.910-0.923 src /
-0.900-0.956 dst), but the serial fill dominates the depth.  With `FILL=0`
-(first pass only) it is 1467/27 (8x8) and 2564/32 (10x10), but 394/476
-non-maximal cycles at 8x8/10x10, so the fill is mandatory.  This prototype
-does not reproduce the paper's cell-level waterfall; see
+first pass + row-serial waterfall fill.  The default `SIMPLE_FILL=1`
+makes the fill a fixed-order lowest-index greedy (the first pass already
+owns the per-port RR, so the fill only has to guarantee maximality):
+8x8 2007/58, 10x10 3387/70.  It passes all 42 strict RR checks, all 18
+maximality shapes (0 non-max cycles), K-regular Jain 1.000, random 10x10
+0.876-0.920 src / 0.870-0.950 dst.  The original per-row `a_ptr` fill
+(`SIMPLE_FILL=0`) is 8x8 3094/122, 10x10 6802/186; removing the per-row
+pointer and rotating start halves both depth and area.
+
+With `FILL=0` (first pass only) it is 1467/27 (8x8) and 2564/32 (10x10),
+but 394/476 non-maximal cycles, so the fill is mandatory.  With
+`FIRST_PASS=0, SIMPLE_FILL=1` (greedy base only) it is 552/31 and 880/38.
+Adding the parallel per-port override to that greedy base gives
+`rtl/fair_arbiter_greedy.v`: 8x8 1976/34, 10x10 3630/39, 42/42 and
+maximal, but multi-source Jain collapses to 0.125-0.333 (the fixed-order
+greedy keeps serving the same low-index pairs).  This shows the iSLIP
+first pass is what makes the WTF-style fair; the optimized 70-level
+version is the smallest fair+maximal variant found.  It is still 2x the
+35-level WFA, so the WFA remains the default.  This prototype does not
+reproduce the paper's cell-level waterfall; see
 `docs/literature.md` section 4.2.
 
 Reproduce the WTF prototype checks:
@@ -273,6 +286,30 @@ iverilog -g2012 -DWTF_DUT -s tb_maximal_top -o /tmp/wtf_max.vvp \
 iverilog -g2012 -DWTF_DUT -s tb_jain_top -o /tmp/wtf_jain.vvp \
     rtl/fair_arbiter_wtf.v tb/tb_jain.sv && vvp /tmp/wtf_jain.vvp
 ```
+
+Set `SIMPLE_FILL=0` (via `chparam` or the module parameter) to reproduce the
+original per-row `a_ptr` fill (122/186 levels).  The greedy-base comparison
+uses `FIRST_PASS=0, SIMPLE_FILL=1`; `rtl/fair_arbiter_greedy.v` is the
+greedy base plus the parallel per-port override.
+
+Wavefront+ (default `WAVEFRONT_PLUS=1`): the δ register advances to the
+diagonal after the first scan stage that has any request, instead of always
+δ+1.  The stage-presence OR tree (`req_w` diagonals) only feeds the δ
+next-state register; the grant path is unchanged.  RTL results:
+
+| K-regular, 10x10 | WFAx1 | WFAx1+ | WFAx4 | WFAx4+ |
+|------------------|-------|--------|-------|--------|
+| K=8 | 0.781 | **1.000** | 0.935 | 0.943 |
+| K=5 | 0.500 | **1.000** | 0.812 | **0.930** |
+| K=3 | 0.505 | **1.000** | 0.771 | **0.899** |
+
+Random 10x10 also improves slightly at NSCHED=4 (0.890-0.929 ->
+0.914-0.933 src).  Strict RR remains 42/42 and maximality remains 0 non-max
+on all 18 shapes; the main WFA and fair-variant regressions pass.  Generic
+Yosys area/depth: 8x8 6694/31 -> 7022/30; 10x10 10714/34 -> 10987/36 (the
+2-level change is mapping jitter on the unchanged grant path; the reported
+critical path still starts at `i_dest_bp` and ends at `o_grant_src_ptr`).
+Set `WAVEFRONT_PLUS=0` to restore the old +1 update.
 
 Delta-register path optimization: `wfa_core` enables the δ register with
 `any_req = |req_pad` (an OR reduction of the effective request matrix) instead

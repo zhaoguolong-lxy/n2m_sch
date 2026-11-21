@@ -46,7 +46,9 @@ module maximal_runner #(
     logic [M-1:0]           o_dest_vld;
     logic [M-1:0][CWN-1:0]  o_dest_ptr;
 
-`ifdef WTF_DUT
+`ifdef GREEDY_DUT
+    fair_arbiter_greedy #(.N(N), .M(M), .PTR_RESET(1), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
+`elsif WTF_DUT
     fair_arbiter_wtf #(.N(N), .M(M), .PTR_RESET(1), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
 `elsif FAIR_DUT
     fair_arbiter_fair #(.N(N), .M(M), .PTR_RESET(1), .ITER(ITER), .AUGMENT(AUGMENT)) dut (

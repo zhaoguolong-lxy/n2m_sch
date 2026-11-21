@@ -121,6 +121,7 @@ rtl/fair_arbiter_fair.v optional fair variant (iSLIP first pass + WFA fill)
 rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 rtl/reference/fair_arbiter_dpa.v    single-pass DPA (21 levels, non-maximal)
 rtl/fair_arbiter_wtf.v              WTF-style prototype (iSLIP + row fill)
+rtl/fair_arbiter_greedy.v           greedy base + per-port override (comparison)
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)

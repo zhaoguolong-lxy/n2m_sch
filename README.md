@@ -129,7 +129,7 @@ tb/tb_fairness_fair.sv  strict fairness tests for the fair variant
 tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
 scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
-scripts/fairness_compare.py  multi-source Jain model: WFAx1/x2/x4 vs fair
+scripts/fairness_compare.py  multi-source Jain model: WFAx1/x2/x4, wavefront+
 scripts/queue_drain.py      shared-queue drain model (window sweep)
 scripts/verify_maximal.py  same check for the old iSLIP+fill reference
 sim/run_sim.sh          compile + run wrapper (optional)
@@ -140,6 +140,7 @@ synth/synth_fair.ys     synthesis / depth sweep for the fair variant
 docs/scheme.md          design + scheme diagram
 docs/testpoints.md      test point matrix + results
 docs/ppa.md             synthesis / PPA results
+docs/literature.md      literature survey: DPA/WFA/RR/depth (70 refs)
 ```
 
 ## Build & run simulation

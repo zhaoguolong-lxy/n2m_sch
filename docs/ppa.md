@@ -167,6 +167,13 @@ RR (see the WFA discussion).
 One-layer reference PPA: 1553/20 (8x8), 2726/21 (10x10), 2688/22 (9x11),
 2707/22 (11x9) cells/levels.
 
+The strict 42/42 RR result of this one-layer module comes from its per-port
+`a_ptr`/`g_ptr`, **not** from the diagonal priority.  The classic DPA of
+Hurt et al. rotates a global diagonal priority and exhibits the same
+staircase sequence as the WFA for a single source
+(`0,2,2,5,5,5,0,...`), so it is not strict per-port RR.  See
+`docs/literature.md` section 2.3 for the derivation and citations.
+
 ## 8. Logic-depth metric (target <= 40 levels)
 
 The user-visible metric is the longest combinational path in Yosys generic gate

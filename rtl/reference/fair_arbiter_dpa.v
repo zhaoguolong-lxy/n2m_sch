@@ -6,6 +6,13 @@
 // FIRST diagonal layer (row-best and column-best); it is kept to show why a
 // single layer is not enough.  Do not treat its numbers as "DPA vs WFA".
 //
+// IMPORTANT: the classic DPA (Hurt et al., ICC'99) rotates a *global*
+// diagonal priority.  For a single source that produces the same staircase
+// sequence as the WFA (0,2,2,5,5,5,0,...), so classic DPA is NOT strict
+// per-port RR.  The strict RR measured for this module (42/42) comes from
+// the per-port a_ptr/g_ptr, not from the diagonal priority.  See
+// docs/literature.md section 2.3.
+//
 // Every source keeps a destination pointer a_ptr[i], every destination a
 // source pointer g_ptr[j].  A cell is granted when it is both the row's
 // first request from a_ptr[i] and the column's first request from g_ptr[j]:

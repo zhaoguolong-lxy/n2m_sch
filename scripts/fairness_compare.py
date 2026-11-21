@@ -59,6 +59,39 @@ def wfa_match(req, N, M, delta, perm):
     return out
 
 
+def wfa_match_wp(req, N, M, delta, perm):
+    """Wavefront+ matching (Becker / Rasheed): same scan as wfa_match, but
+    the caller advances delta to the diagonal after the first diagonal that
+    actually has a request, instead of always delta+1.
+
+    Returns (grant matrix, delta step).  The grant matrix is identical to
+    wfa_match for the same delta; only the next delta differs.
+    """
+    P = max(N, M)
+    reqw = [[0] * P for _ in range(P)]
+    for i in range(N):
+        for j in range(M):
+            reqw[i][(j - delta) % P] = req[i][j]
+    rf = [True] * P
+    cf = [True] * P
+    gl = [[0] * P for _ in range(P)]
+    first_req = -1
+    for d in range(P):
+        for r in range(N):
+            i = perm[r]
+            j = (r + d) % P
+            if j < M and reqw[i][j] and first_req < 0:
+                first_req = d
+            if j < M and reqw[i][j] and rf[r] and cf[j]:
+                gl[r][j] = 1
+                rf[r] = False
+                cf[j] = False
+    out = [[0] * M for _ in range(N)]
+    for r in range(N):
+        out[perm[r]] = [gl[r][(j - delta) % M] for j in range(M)]
+    return out, (1 if first_req < 0 else first_req + 1)
+
+
 def first_pass(req, N, M, gp, ap):
     g = [[0] * M for _ in range(N)]
     for j in range(M):
@@ -188,6 +221,36 @@ def run_req(req, N, M, cycles, nsched):
     return sum(js) / len(js), sum(jd) / len(jd)
 
 
+def run_req_wp(req, N, M, cycles, nsched):
+    """Same as run_req, with the wavefront+ delta update."""
+    perms = [[(c * i) % N for i in range(N)]
+             for c in coprime_list(N, nsched)]
+    sw = [[0] * M for _ in range(N)]
+    d = 0
+    t = 0
+    for _ in range(cycles):
+        g, step = wfa_match_wp(req, N, M, d,
+                               perms[(t // max(N, M)) % len(perms)])
+        for i in range(N):
+            for j in range(M):
+                if g[i][j]:
+                    sw[i][j] += 1
+        if any(map(any, g)):
+            d = (d + step) % max(N, M)
+            t += 1
+    js = []
+    jd = []
+    for i in range(N):
+        v = [sw[i][j] for j in range(M) if req[i][j]]
+        if len(v) > 1:
+            js.append(jain(v))
+    for j in range(M):
+        v = [sw[i][j] for i in range(N) if req[i][j]]
+        if len(v) > 1:
+            jd.append(jain(v))
+    return sum(js) / len(js), sum(jd) / len(jd)
+
+
 def main():
     N = M = 10
     print("10x10 multi-source fairness model (Jain index, 1.0 = uniform)")
@@ -224,6 +287,20 @@ def main():
             r4 = run_req(req, N, M, 2000, 4)
             print("%-6d %-5s %10.3f %10.3f %10.3f" %
                   (K, tag, r1[0], r2[0], r4[0]))
+
+    print()
+    print("wavefront+ (delta advances to the diagonal after the first")
+    print("diagonal that has any request; no effect on random traffic):")
+    print("%-6s %-5s %10s %10s %10s %10s" %
+          ("K", "shape", "WFAx1", "WFAx1+", "WFAx4", "WFAx4+"))
+    for K in (10, 8, 5, 3):
+        req = regular_req(N, M, K)
+        r1 = run_req(req, N, M, 2000, 1)
+        r1p = run_req_wp(req, N, M, 2000, 1)
+        r4 = run_req(req, N, M, 2000, 4)
+        r4p = run_req_wp(req, N, M, 2000, 4)
+        print("%-6d %-5s %10.3f %10.3f %10.3f %10.3f" %
+              (K, "circ", r1[0], r1p[0], r4[0], r4p[0]))
 
 
 if __name__ == "__main__":

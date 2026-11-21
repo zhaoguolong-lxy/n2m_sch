@@ -145,22 +145,26 @@ the smallest known way to make the result provably maximal at these sizes.
 Binary-tree round-robin arbiters (PRRA/IPRRA) are only preferable for very
 large N (>=64).
 
-## DPA reference (single-pass, non-maximal)
+## One-layer DPA reference (not a full DPA)
 
-`rtl/reference/fair_arbiter_dpa.v` is a per-port diagonal-priority arbiter:
-a cell is granted when it is both the row's first request from `a_ptr[i]`
-and the column's first request from `g_ptr[j]`.  It is much shallower
-(10x10: 2726 cells / 21 levels) and gives strict single-source /
-single-destination RR for free (42/42), but it is **not maximal**: the
-maximality bench reports 630/773 non-maximal cycles at 10x10, only
-2.20/10 grants per cycle (22%) and 31k wasted pairs.  Adding a fill pass
-restores maximality but costs another wavefront (21 + 1 + 33 levels), i.e.
-more than the 35-level WFA.  The classic global-delta DPA (priority
-`(j-i-delta) mod P`) does better on size (about 80% at 75% load) but it is
-the same diagonal-priority family as the WFA, so it is not strict RR either,
-and it is still non-maximal.
+A complete DPA scans the P diagonals in priority order, just like the
+wavefront, and is maximal; in fact the wavefront arbiter *is* the temporal
+realisation of the full DPA.  `rtl/reference/fair_arbiter_dpa.v` deliberately
+implements only the **first** diagonal layer: a cell is granted when it is
+both the row's first request from `a_ptr[i]` and the column's first request
+from `g_ptr[j]`.  That layer is shallow (10x10: 2726 cells / 21 levels) and
+gives strict single-source / single-destination RR for free (42/42), but it
+is not maximal: 630/773 non-maximal cycles at 10x10, only 2.20/10 grants per
+cycle (22%), 31k wasted pairs.  Continuing the scan on the residual
+diagonals is exactly the wavefront, which costs the usual P stages; a
+spatially unrolled "loop-free" version was measured earlier at 77 levels.
 
-For reference, the same single-pass DPA is 1553/20 (8x8), 2688/22 (9x11),
+The classic global-delta DPA (priority `(j-i-delta) mod P`) is the same
+diagonal-priority family as the wavefront: full scan gives the same maximal
+matching family, and the global delta still does not provide strict per-port
+RR (see the WFA discussion).
+
+One-layer reference PPA: 1553/20 (8x8), 2726/21 (10x10), 2688/22 (9x11),
 2707/22 (11x9) cells/levels.
 
 ## 8. Logic-depth metric (target <= 40 levels)

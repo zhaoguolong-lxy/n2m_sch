@@ -1,5 +1,10 @@
 //=============================================================================
-// fair_arbiter_dpa.v - single-pass Diagonal Priority Arbiter (per-port RR).
+// fair_arbiter_dpa.v - ONE-LAYER Diagonal Priority Arbiter (per-port RR).
+//
+// NOTE: a complete DPA scans all P diagonals, exactly like the wavefront
+// arbiter (rtl/wfa_core.v), and is maximal.  This module only resolves the
+// FIRST diagonal layer (row-best and column-best); it is kept to show why a
+// single layer is not enough.  Do not treat its numbers as "DPA vs WFA".
 //
 // Every source keeps a destination pointer a_ptr[i], every destination a
 // source pointer g_ptr[j].  A cell is granted when it is both the row's
@@ -9,12 +14,11 @@
 //   col_pick[i][j] = eff_req[i][j] & (i == first requested from g_ptr[j])
 //   grant[i][j]    = row_pick[i][j] & col_pick[i][j]
 //
-// This is the single-pass DPA.  It is NOT maximal: a source whose top
-// destination loses the column to another source is not re-tried on its
-// second choice.  Measured on the maximality bench (10x10, random traffic):
-// 630/773 cycles non-maximal, only 2.20/10 grants per cycle (22%), with
-// 31k wasted pairs.  It is kept as a reference/comparison only; the shipped
-// design is rtl/fair_arbiter.v (maximal WFA + single-side RR override).
+// Only the first layer is resolved, so a source whose top destination loses
+// the column to another source is not re-tried on its second choice.  The
+// measured 10x10 numbers of this one-layer version are 630/773 non-maximal
+// cycles and 2.20/10 grants per cycle (22%).  A full DPA would continue the
+// scan on the residual diagonals; the wavefront is that full scan.
 //=============================================================================
 
 `default_nettype none

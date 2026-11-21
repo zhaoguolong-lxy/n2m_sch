@@ -29,7 +29,7 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 | 11x9 | 9 | 0 | 9.00/9 (100%) | 8.67/9 (96%) |
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first + WFA fill): 10x10
-first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The 4-schedule fast default is
+first=10, full=100%, Bernoulli 9.03/10 (90%); depth 72.  The 4-schedule fast default is
 8.87/10 (89%) at depth 35 (the single-schedule WFA measured 8.95/10; the
 difference is within run-to-run noise).
 
@@ -195,7 +195,7 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
    at 10x10 versus 36 for the default WFA + override (35 pure WFA).
 
-3. **Depth/area (10x10)**: 10711 cells / 35 levels for the 4-schedule default (NSCHED=1: 5274 / 35); pure WFA is 2062/35,
+3. **Depth/area (10x10)**: 8902 cells / 35 levels for the 4-schedule default (NSCHED=1: 4786 / 35); pure WFA is 2062/35,
    versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
    the per-source/per-destination RR selectors but runs in parallel; the WFA
    path stays critical.  The design removes

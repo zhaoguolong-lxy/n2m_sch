@@ -43,7 +43,7 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [fair 变体：iSLIP 首轮 + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
-（`rtl/fair_arbiter.v`，默认 RTL）是 4 调度波前 + 单侧公平覆盖，10x10 综合为 **10711 cells / 35 级**（4 个波前和覆盖逻辑并行）；单调度版本（NSCHED=1）为 5274 cells / 35 级。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（31/35/36/38），16x16 不在本变体目标内。
+（`rtl/fair_arbiter.v`，默认 RTL）是 4 调度波前 + 单侧公平覆盖，10x10 综合为 **8902 cells / 35 级**（4 个波前和覆盖逻辑并行）；单调度版本（NSCHED=1）为 4786 cells / 35 级。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（30/35/37/38），16x16 不在本变体目标内。
 
 ## fast / fair 两个版本
 
@@ -51,8 +51,8 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 
 | 版本 | RTL | 单源/单目的严格 RR | 多源公平 | 10x10 PPA |
 |------|-----|--------------------|----------|-----------|
-| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | 4 调度 WFA（Jain 0.89-0.93 src / 0.92-0.95 dst） | **10711 cells / 35 级** |
-| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 5119 cells / 74 级 |
+| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | 4 调度 WFA（Jain 0.89-0.93 src / 0.92-0.95 dst） | **8902 cells / 35 级** |
+| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 4769 cells / 72 级 |
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
 
 ### 多调度公平（面积换公平）
@@ -63,10 +63,10 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 
 | 方案 | src Jain（10x10） | dst Jain（10x10） | 10x10 cells / 级数 |
 |------|-------------------|-------------------|--------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| **NSCHED=4（默认）** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
-| fair 变体 | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 4786 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 6219 / 35 |
+| **NSCHED=4（默认）** | **0.890-0.929** | **0.918-0.952** | 8902 / 35 |
+| fair 变体 | 0.866-0.895 | 0.912-0.934 | 4769 / 72 |
 
 RTL 检查 `tb/tb_jain.sv` 实测 NSCHED=4 为 0.914-0.933 src / 0.895-0.934 dst。
 `NSCHED` 是参数：NSCHED=1 回到最小面积，NSCHED=2 是中间点。

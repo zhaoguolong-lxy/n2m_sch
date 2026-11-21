@@ -49,12 +49,58 @@ module fair_arbiter #(
 );
     localparam integer CWN=$clog2(N), CWM=$clog2(M), NM=N*M;
     localparam integer NC=(N<M)?N:M, MC=(N>M)?N:M;
+    localparam integer CWP=$clog2(MC);
     genvar i,j,b,sc;
 
-    // Masked request matrix for the single-side override.  The WFA core builds
-    // its own copy from the raw request and backpressure; sharing one matrix
-    // raises the fanout and is slower at small shapes.
-    wire [NM-1:0] eff_req;
+    // Masked request matrix, built once here and shared by the WFA cores and
+    // the single-side override.  Two identical copies are used: the four
+    // schedules would otherwise load one net with ~4*NM consumers, and the
+    // buffer tree costs 1-2 levels at the rectangular shapes.  Two schedules
+    // per copy keeps the fanout halved for a negligible area cost.
+    wire [NM-1:0] eff_req, eff_req_b;
+    localparam integer NS = (NSCHED < 1) ? 1 : (NSCHED > 4 ? 4 : NSCHED);
+
+    // Shared control state: one delta counter for every schedule and one
+    // schedule counter.  All schedules advance in lockstep.
+    wire any_req_w;
+    assign any_req_w = |eff_req;
+    reg [1:0] sched;
+
+    reg [CWP-1:0] delta;
+    generate
+        if (PTR_RESET) begin : gen_delta_rst
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) delta <= 0;
+                else if (any_req_w) begin
+                    if (delta == MC-1) delta <= 0;
+                    else delta <= delta + 1'b1;
+                end
+            end
+        end else begin : gen_delta_norst
+            always @(posedge clk) begin
+                if (any_req_w) begin
+                    if (delta == MC-1) delta <= 0;
+                    else delta <= delta + 1'b1;
+                end
+            end
+        end
+    endgenerate
+
+    reg [CWM:0] scnt;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            scnt  <= 0;
+            sched <= 0;
+        end else if (any_req_w) begin
+            if (scnt == MC-1) begin
+                scnt <= 0;
+                if (sched == NS-1) sched <= 0;
+                else sched <= sched + 1'b1;
+            end else begin
+                scnt <= scnt + 1'b1;
+            end
+        end
+    end
 
     // ------------------------------------------------------------------
     // Multi-schedule WFA.  NSCHED wavefronts run in parallel; schedule s
@@ -63,8 +109,6 @@ module fair_arbiter #(
     // diagonal-priority order, so the long-run grant distribution is much
     // flatter than a single rotating diagonal.
     // ------------------------------------------------------------------
-    localparam integer NS = (NSCHED < 1) ? 1 : (NSCHED > 4 ? 4 : NSCHED);
-
     // The schedule multiplier must be coprime to NC, otherwise the row
     // permutation would repeat/skip rows.  Evaluate the table at elaboration.
     function automatic integer gcd_i;
@@ -104,8 +148,9 @@ module fair_arbiter #(
             wire [NC-1:0] core_src_bp_s, core_src_vld_s;
             wire [MC-1:0] core_dest_bp_s, core_dest_vld_s;
 
-            wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET)) u_core (
-                .clk(clk), .rst_n(rst_n), .i_req_flat(core_req_s),
+            wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET),.PRE_MASK(1)) u_core (
+                .rst_n(rst_n), .i_delta(delta),
+                .i_req_flat(core_req_s),
                 .i_src_bp(core_src_bp_s), .i_dest_bp(core_dest_bp_s),
                 .o_grant_flat(core_grant_s), .o_src_vld(core_src_vld_s),
                 .o_dest_vld(core_dest_vld_s)
@@ -113,12 +158,11 @@ module fair_arbiter #(
 
             if (N <= M) begin : gen_direct
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
-                    assign core_req_s[i*MC+j] = i_src_dest_req[(CMUL*i)%NC][j];
+                    assign core_req_s[i*MC+j] = (sc < 2) ? eff_req[(CMUL*i)%NC * M + j]
+                                                         : eff_req_b[(CMUL*i)%NC * M + j];
                 end
-                for (i=0;i<NC;i=i+1) begin : g_bp
-                    assign core_src_bp_s[i] = i_src_bp[(CMUL*i)%NC];
-                end
-                assign core_dest_bp_s = i_dest_bp;
+                assign core_src_bp_s = {NC{1'b0}};
+                assign core_dest_bp_s = {MC{1'b0}};
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
                     assign wfa_match_s[sc*NM + ((CMUL*i)%NC)*M + j] = core_grant_s[i*MC+j];
                 end
@@ -128,12 +172,11 @@ module fair_arbiter #(
                 assign wfa_dv_s[sc*M +: M] = core_dest_vld_s;
             end else begin : gen_trans
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
-                    assign core_req_s[i*MC+j] = i_src_dest_req[j][(CMUL*i)%NC];
+                    assign core_req_s[i*MC+j] = (sc < 2) ? eff_req[j*M + (CMUL*i)%NC]
+                                                         : eff_req_b[j*M + (CMUL*i)%NC];
                 end
-                for (i=0;i<NC;i=i+1) begin : g_bp
-                    assign core_src_bp_s[i] = i_dest_bp[(CMUL*i)%NC];
-                end
-                assign core_dest_bp_s = i_src_bp;
+                assign core_src_bp_s = {NC{1'b0}};
+                assign core_dest_bp_s = {MC{1'b0}};
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
                     assign wfa_match_s[sc*NM + j*M + ((CMUL*i)%NC)] = core_grant_s[i*MC+j];
                 end
@@ -150,35 +193,17 @@ module fair_arbiter #(
     wire [NM-1:0] wfa_match;
     wire [N-1:0] wfa_src_vld;
     wire [M-1:0] wfa_dest_vld;
-    reg [1:0] sched;
     assign wfa_match    = wfa_match_s[sched*NM +: NM];
     assign wfa_src_vld  = wfa_sv_s[sched*N +: N];
     assign wfa_dest_vld = wfa_dv_s[sched*M +: M];
-
-    // Schedule counter: advance every MC grants.
-    wire any_req_w;
-    assign any_req_w = |eff_req;
-    reg [CWM:0] scnt;
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            scnt  <= 0;
-            sched <= 0;
-        end else if (any_req_w) begin
-            if (scnt == MC-1) begin
-                scnt <= 0;
-                if (sched == NS-1) sched <= 0;
-                else sched <= sched + 1'b1;
-            end else begin
-                scnt <= scnt + 1'b1;
-            end
-        end
-    end
 
     // Effective request / row/col activity
     generate for (i=0;i<N;i=i+1) begin : g_eff_row
         for (j=0;j<M;j=j+1) begin : g_eff_bit
             assign eff_req[i*M+j] = i_src_dest_req[i][j] & rst_n
                                   & ~i_src_bp[i] & ~i_dest_bp[j];
+            assign eff_req_b[i*M+j] = i_src_dest_req[i][j] & rst_n
+                                    & ~i_src_bp[i] & ~i_dest_bp[j];
         end
     end endgenerate
 

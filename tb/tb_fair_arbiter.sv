@@ -127,14 +127,9 @@ module tb_core #(
     //-------------------------------------------------------------------------
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
-`ifdef FAIR_DUT
-            $deposit(dut.u_fill.delta, '0);
-`else
-            $deposit(dut.g_sched[0].u_core.delta, '0);
-            $deposit(dut.g_sched[1].u_core.delta, '0);
-            $deposit(dut.g_sched[2].u_core.delta, '0);
-            $deposit(dut.g_sched[3].u_core.delta, '0);
-`endif
+            // one delta register in each wrapper (fast: shared by all
+            // schedules, fair: the fill core)
+            $deposit(dut.delta, '0);
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);
         end

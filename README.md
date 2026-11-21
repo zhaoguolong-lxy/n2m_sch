@@ -46,12 +46,12 @@ rotating priority, the no-waste proof, and the depth/area metric.
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
 The default RTL (`rtl/fair_arbiter.v`) is a four-schedule WFA plus the
-single-side fairness override; 10x10 maps to **10711 cells / 35 gate levels**
+single-side fairness override; 10x10 maps to **8902 cells / 35 gate levels**
 (the four wavefronts and the override run in parallel), vs 11821 cells / 300
-levels for the iSLIP+fill version.  A single-schedule WFA (NSCHED=1) is 5274
+levels for the iSLIP+fill version.  A single-schedule WFA (NSCHED=1) is 4786
 cells / 35 levels.  General traffic is maximal but not maximum-cardinality.
 Single-source and single-destination sequences are strict RR (42/42 tests).
-The <=40-level target is met at 8x8 (31), 10x10 (35), 9x11 (36), 11x9 (38);
+The <=40-level target is met at 8x8 (30), 10x10 (35), 9x11 (37), 11x9 (38);
 16x16 is outside this variant's target.
 
 ## Fast vs fair variants
@@ -61,8 +61,8 @@ internal scheduling.
 
 | Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
 |---------|-----|-------------------------------------------|-----------------------|-----------|
-| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA (Jain 0.89-0.93 src / 0.92-0.95 dst) | **10711 cells / 35 levels** |
-| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 5119 cells / 74 levels |
+| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA (Jain 0.89-0.93 src / 0.92-0.95 dst) | **8902 cells / 35 levels** |
+| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 4769 cells / 72 levels |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
 ### Multi-schedule fairness (area trade)
@@ -74,10 +74,10 @@ This flattens the long-run grant distribution:
 
 | Scheme | src Jain (10x10) | dst Jain (10x10) | 10x10 cells / levels |
 |--------|------------------|------------------|----------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| **NSCHED=4 (default)** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
-| fair variant | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 4786 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 6219 / 35 |
+| **NSCHED=4 (default)** | **0.890-0.929** | **0.918-0.952** | 8902 / 35 |
+| fair variant | 0.866-0.895 | 0.912-0.934 | 4769 / 72 |
 
 The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst
 for NSCHED=4 on three persistent patterns).  `NSCHED` is a parameter:

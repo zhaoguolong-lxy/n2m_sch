@@ -25,7 +25,7 @@
 `default_nettype none
 module fair_arbiter_fair #(
     parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1,
-    parameter integer WAVEFRONT_PLUS=1
+    parameter integer WAVEFRONT_PLUS=1, AOI_STYLE=1
 ) (
     input wire clk, rst_n,
     input wire [N-1:0][M-1:0] i_src_dest_req,
@@ -102,7 +102,8 @@ module fair_arbiter_fair #(
     // WFA fill on residual
     wire [NM-1:0] fill_grant;
     wfa_core #(.N(N),.M(M),.PTR_RESET(PTR_RESET),
-               .WAVEFRONT_PLUS(WAVEFRONT_PLUS)) u_fill (
+               .WAVEFRONT_PLUS(WAVEFRONT_PLUS),
+               .AOI_STYLE(AOI_STYLE)) u_fill (
         .clk(clk), .rst_n(rst_n),
         .i_req_flat(res_req),
         .i_src_bp({N{1'b0}}), .i_dest_bp({M{1'b0}}),

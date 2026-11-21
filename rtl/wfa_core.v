@@ -12,7 +12,11 @@ module wfa_core #(
     parameter integer N         = 8,
     parameter integer M         = 8,
     parameter integer PTR_RESET = 1,
-    parameter integer WAVEFRONT_PLUS = 1
+    // 0 = delta+1, 1 = registered presence (timing-safe), 2 = combinational
+    parameter integer WAVEFRONT_PLUS = 1,
+    // 1 = write the free-token update in AOI21 form (maps to one AOI21
+    // cell in a library that has it; generic synthesis still works)
+    parameter integer AOI_STYLE = 1
 ) (
     input  wire                      clk,
     input  wire                      rst_n,
@@ -121,21 +125,45 @@ module wfa_core #(
     // Wavefront+ (Becker / Rasheed): advance delta to the diagonal after the
     // first scan stage that has any request, instead of always delta+1.
     //
-    // stage_present[d] is the OR of the requests on scan stage d, i.e. the
-    // wrapped diagonal (i, (i+d)%P) of the rotated matrix.  This OR tree only
-    // feeds the delta next-state register; the grant path from req to the
-    // outputs is unchanged.
+    // diag_pres[k] is the delta-independent OR of the unrotated (but already
+    // row-permuted) request on diagonal k.  The scan stage d is original
+    // diagonal (d+delta)%P, so stage_present = rot_plus(diag_pres, delta).
+    //
+    // WAVEFRONT_PLUS=1 (default) registers diag_pres and uses the previous
+    // cycle's value for the delta next state.  Persistent patterns see the
+    // same vector every cycle, so the fairness is identical to the
+    // combinational version; the current request only drives the short
+    // OR-tree -> presence register path, never the delta next-state path.
+    // WAVEFRONT_PLUS=2 uses the current diag_pres combinationally.
     //=========================================================================
-    wire [P-1:0] stage_present;
+    wire [P-1:0] diag_pres;
     generate
-        for (d = 0; d < P; d = d + 1) begin : gen_stage_present
+        for (d = 0; d < P; d = d + 1) begin : gen_diag_pres
             wire [P-1:0] terms;
-            for (i = 0; i < P; i = i + 1) begin : gen_present_cell
-                assign terms[i] = req_w[i*P + ((i + d) % P)];
+            for (i = 0; i < P; i = i + 1) begin : gen_pres_cell
+                assign terms[i] = req_pad[i*P + ((i + d) % P)];
             end
-            assign stage_present[d] = |terms;
+            assign diag_pres[d] = |terms;
         end
     endgenerate
+
+    reg [P-1:0] diag_pres_r;
+    generate
+        if (PTR_RESET) begin : gen_pres_rst
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) diag_pres_r <= {P{1'b0}};
+                else diag_pres_r <= diag_pres;
+            end
+        end else begin : gen_pres_norst
+            always @(posedge clk) diag_pres_r <= diag_pres;
+        end
+    endgenerate
+
+    wire [P-1:0] pres_sel;
+    assign pres_sel = (WAVEFRONT_PLUS == 1) ? diag_pres_r : diag_pres;
+
+    wire [P-1:0] stage_present;
+    assign stage_present = rot_plus(pres_sel, delta);
 
     function automatic [CWP-1:0] lowest_set;
         input [P-1:0] v;
@@ -196,11 +224,25 @@ module wfa_core #(
 
             for (i = 0; i < P; i = i + 1) begin : gen_cell
                 localparam integer J = (i + d) % P;
-                assign grant_w[i*P + J] = req_w[i*P + J] & rf[i] & cf[J];
-                assign free_stage[(d+1)*2*P + i] = rf[i]
-                                                 & ~(req_w[i*P + J] & cf[J]);
-                assign free_stage[(d+1)*2*P + P + J] = cf[J]
-                                                 & ~(req_w[i*P + J] & rf[i]);
+                wire req_cell = req_w[i*P + J];
+                assign grant_w[i*P + J] = req_cell & rf[i] & cf[J];
+
+                // AOI21 form:  out = ~((req & cf) | ~rf) = rf & ~(req & cf).
+                // The right-hand form is the same function, but this form
+                // gives the synthesis tool the exact 2-AND + 1-OR + invert
+                // pattern that maps to a single AOI21 cell.  The fallback
+                // branch is the plain AND/NAND form for comparison.
+                if (AOI_STYLE) begin : gen_aoi
+                    assign free_stage[(d+1)*2*P + i] =
+                        ~((req_cell & cf[J]) | ~rf[i]);
+                    assign free_stage[(d+1)*2*P + P + J] =
+                        ~((req_cell & rf[i]) | ~cf[J]);
+                end else begin : gen_and
+                    assign free_stage[(d+1)*2*P + i] =
+                        rf[i] & ~(req_cell & cf[J]);
+                    assign free_stage[(d+1)*2*P + P + J] =
+                        cf[J] & ~(req_cell & rf[i]);
+                end
             end
         end
     endgenerate

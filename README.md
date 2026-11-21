@@ -46,13 +46,16 @@ rotating priority, the no-waste proof, and the depth/area metric.
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
 The default RTL (`rtl/fair_arbiter.v`) is a four-schedule WFA plus the
-single-side fairness override; 10x10 maps to **10711 cells / 35 gate levels**
-(the four wavefronts and the override run in parallel), vs 11821 cells / 300
-levels for the iSLIP+fill version.  A single-schedule WFA (NSCHED=1) is 5274
-cells / 35 levels.  General traffic is maximal but not maximum-cardinality.
-Single-source and single-destination sequences are strict RR (42/42 tests).
-The <=40-level target is met at 8x8 (31), 10x10 (35), 9x11 (36), 11x9 (38);
-16x16 is outside this variant's target.
+single-side fairness override and wavefront+; 10x10 maps to **11255 cells /
+36 generic Yosys levels**.  Generic Yosys has no AOI21 cell, so it maps the
+wavefront cell to two levels; with the real AOI21 library the 20 wavefront
+levels become 10, giving an estimated **~26 levels at 10x10** (8x8 ~23).
+The generic-only baseline without wavefront+/AOI21 is 10711 cells / 35
+levels, vs 11821 cells / 300 levels for the iSLIP+fill version.  General
+traffic is maximal but not maximum-cardinality.  Single-source and
+single-destination sequences are strict RR (42/42 tests).  With AOI21 the
+estimated depths are 23/26/27/28 for 8x8/10x10/9x11/11x9; 16x16 is outside
+this variant's target.
 
 ## Fast vs fair variants
 
@@ -61,7 +64,7 @@ internal scheduling.
 
 | Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
 |---------|-----|-------------------------------------------|-----------------------|-----------|
-| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA (Jain 0.89-0.93 src / 0.92-0.95 dst) | **10711 cells / 35 levels** |
+| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA + wavefront+ (Jain 0.914-0.933 src / 0.895-0.934 dst) | **11255 cells / 36 generic; ~26 with AOI21** |
 | **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 5119 cells / 74 levels |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
@@ -74,9 +77,10 @@ This flattens the long-run grant distribution:
 
 | Scheme | src Jain (10x10) | dst Jain (10x10) | 10x10 cells / levels |
 |--------|------------------|------------------|----------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| **NSCHED=4 (default)** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| NSCHED=1 baseline | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
+| NSCHED=2 baseline | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
+| NSCHED=4 baseline | 0.890-0.929 | 0.918-0.952 | 10711 / 35 |
+| **NSCHED=4 + wavefront+ (default)** | **0.914-0.933** | **0.895-0.934** | 11255 / 36 generic, ~26 AOI |
 | fair variant | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
 The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst

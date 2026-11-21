@@ -35,7 +35,7 @@
 
 module fair_arbiter #(
     parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1,
-    parameter integer NSCHED=4, WAVEFRONT_PLUS=1
+    parameter integer NSCHED=4, WAVEFRONT_PLUS=1, AOI_STYLE=1
 ) (
     input wire clk, rst_n,
     input wire [N-1:0][M-1:0] i_src_dest_req,
@@ -105,7 +105,8 @@ module fair_arbiter #(
             wire [MC-1:0] core_dest_bp_s, core_dest_vld_s;
 
             wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET),
-                       .WAVEFRONT_PLUS(WAVEFRONT_PLUS)) u_core (
+                       .WAVEFRONT_PLUS(WAVEFRONT_PLUS),
+                       .AOI_STYLE(AOI_STYLE)) u_core (
                 .clk(clk), .rst_n(rst_n), .i_req_flat(core_req_s),
                 .i_src_bp(core_src_bp_s), .i_dest_bp(core_dest_bp_s),
                 .o_grant_flat(core_grant_s), .o_src_vld(core_src_vld_s),

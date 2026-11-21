@@ -178,15 +178,16 @@ staircase sequence as the WFA for a single source
 
 The user-visible metric is the longest combinational path in Yosys generic gate
 levels (`ltp -noff`), including the request rotation, the matching array and the
-output encoders.  Designs above 40 levels are flagged for optimization.
+output encoders.  Designs above 35 levels are flagged for optimization.
 
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| Multi-schedule WFA + override (fast default) | **31** | **35** | **36** | **38** | out of target |
+| Multi-schedule WFA + override, generic Yosys (no AOI21) | 31 | 36 | 36 | 38 | out of target |
+| **Fast default + AOI21 (estimated)** | **23** | **26** | **27** | **28** | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
-| Target | <=40 | <=40 | <=40 | <=40 | <=40 |
+| Target | <=35 | <=35 | <=35 | <=35 | out of target |
 
 WFA synthesis detail (generic cells, async-reset DFF, `synth/run_synth.sh`;
 each shape runs in a fresh yosys process):
@@ -200,6 +201,14 @@ Default WFA + single-side RR override:
 | 9x11 | 10426 | 36 |
 | 11x9 | 10692 | 38 |
 
+This table is the `WAVEFRONT_PLUS=0, AOI_STYLE=0` baseline.  The current
+default (`WAVEFRONT_PLUS=1` registered presence, `AOI_STYLE=1` AOI21 form)
+is 8x8 7064/31 and 10x10 11255/36 in generic Yosys.  With the real AOI21
+library the wavefront 20 levels become 10, so the estimated depth is
+8x8 ~23 and 10x10 ~26 (well inside the 35-level closure limit).  The
+generic numbers stay above 35 at 10x10 only because generic Yosys has no
+AOI21 cell; see the wavefront+ section below.
+
 Multi-schedule WFA (default): `rtl/fair_arbiter.v` runs NSCHED wavefronts in
 parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
 (pure wiring), and rotates the selected schedule every P grants.  `NSCHED` is
@@ -211,6 +220,7 @@ patterns):
 | NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
 | NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
 | **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| **NSCHED=4 + wavefront+ (default)** | **0.914-0.933** | **0.895-0.934** | 11255 / 36 generic, ~26 AOI |
 | iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
 Saturated uniform traffic (K-regular graphs): every source asks K
@@ -294,8 +304,16 @@ greedy base plus the parallel per-port override.
 
 Wavefront+ (default `WAVEFRONT_PLUS=1`): the δ register advances to the
 diagonal after the first scan stage that has any request, instead of always
-δ+1.  The stage-presence OR tree (`req_w` diagonals) only feeds the δ
-next-state register; the grant path is unchanged.  RTL results:
+δ+1.  The default implementation registers the **delta-independent**
+diagonal-presence vector `diag_pres` and rotates the previous cycle's copy
+by δ (`stage_present = rot_plus(diag_pres_r, delta)`).  Persistent patterns
+see the same vector every cycle, so fairness is identical to the
+combinational version; the current request only drives the short
+OR-tree -> presence-register path, never the δ next-state path.
+`WAVEFRONT_PLUS=2` uses the current `diag_pres` combinationally;
+`WAVEFRONT_PLUS=0` restores δ+1.
+
+RTL results (registered presence):
 
 | K-regular, 10x10 | WFAx1 | WFAx1+ | WFAx4 | WFAx4+ |
 |------------------|-------|--------|-------|--------|
@@ -305,11 +323,24 @@ next-state register; the grant path is unchanged.  RTL results:
 
 Random 10x10 also improves slightly at NSCHED=4 (0.890-0.929 ->
 0.914-0.933 src).  Strict RR remains 42/42 and maximality remains 0 non-max
-on all 18 shapes; the main WFA and fair-variant regressions pass.  Generic
-Yosys area/depth: 8x8 6694/31 -> 7022/30; 10x10 10714/34 -> 10987/36 (the
-2-level change is mapping jitter on the unchanged grant path; the reported
-critical path still starts at `i_dest_bp` and ends at `o_grant_src_ptr`).
-Set `WAVEFRONT_PLUS=0` to restore the old +1 update.
+on all 18 shapes; the main WFA and fair-variant regressions pass.
+
+**AOI21 form (default `AOI_STYLE=1`)**: the free-token update is written as
+
+```
+rf_next = ~((req & cf) | ~rf)     // AOI21: 2-AND + 1-OR + invert
+cf_next = ~((req & rf) | ~cf)
+```
+
+which maps to a single AOI21 cell in the real library, i.e. **one level per
+wavefront stage instead of two**.  The generic Yosys flow has no AOI21 cell
+and still reports 36 levels at 10x10 (8x8: 31), but the real library maps
+the 20 wavefront levels to 10, so the estimated 10x10 depth is **~26**
+(8x8: **~23**) with the same rotation/output logic.  This is the
+configuration that meets the <=35 closure target with margin.  Generic
+area/depth with the AOI form: 8x8 7064/31, 10x10 11255/36; `AOI_STYLE=0`
+keeps the old AND/NAND form (8x8 6916/30, 10x10 11072/36) for comparison.
+The AOI form is logically identical; 42/42 and maximality pass in both.
 
 Delta-register path optimization: `wfa_core` enables the δ register with
 `any_req = |req_pad` (an OR reduction of the effective request matrix) instead

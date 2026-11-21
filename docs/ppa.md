@@ -419,3 +419,33 @@ is relaxed.  Single-source and single-destination sequences are strict RR
 
 The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
 default fast variant is 5,149 / 35, and the old iSLIP+fill is 11,821 / 300.
+
+## SKY130HD cell-level synthesis (local validation)
+
+`bash synth/run_synth.sh sky130` (optionally
+`SKY130_SHAPES=8x8 bash synth/run_synth.sh sky130`) runs
+`synth -> flatten -> dfflibmap -> abc -liberty` against the SKY130HD
+`tt_025C_1v80` Liberty.  The ABC constraint is `synth/sky130.constr`
+(`sky130_fd_sc_hd__inv_2` driver, 10 fF load); ABC `stime` reports the
+cell-level delay with wireload = none.  This is a local estimate, not
+placed/routed STA; use OpenSTA/OpenROAD with the real library for signoff.
+
+| Shape | cells | AOI21 cells | area (um^2) | ABC delay (ps) |
+|-------|-------|-------------|-------------|----------------|
+| 8x8 | 5193 | 406 | 36722.72 | 4517.54 |
+| 10x10 | 10718 | 778 | 81874.77 | 5567.39 |
+
+AOI_STYLE comparison at 10x10, same flow:
+
+| AOI_STYLE | cells | a21oi_1 | area (um^2) | delay (ps) |
+|-----------|-------|---------|-------------|------------|
+| 1 (AOI21 form) | 10718 | 778 | 81874.77 | 5567.39 |
+| 0 (AND/NAND) | 10708 | 773 | 82293.93 | 5514.36 |
+
+Both styles infer AOI21 cells because ABC already reassociates the old
+AND/NAND form.  The explicit AOI21 form is therefore neutral in this
+area-oriented mapping (slightly less area, slightly more reported delay);
+its value is for a mapper/library that does not reassociate the AND/NAND
+form.  The ABC delay is dominated by the four parallel cores and the output
+network, not by a single wavefront stage.  For a true cell-level critical
+path, run OpenSTA/OpenROAD on the mapped netlist.

@@ -143,6 +143,7 @@ sim/run_all.sh          full verification suite (all of the above)
 synth/synth.ys          Yosys synthesis + depth/area sweep (WFA)
 synth/synth_islip.ys    synthesis sweep for the iSLIP reference
 synth/synth_fair.ys     synthesis / depth sweep for the fair variant
+synth/sky130.constr     SKY130 HD ABC constraints (inv_2, 10 fF)
 docs/scheme.md          design + scheme diagram
 docs/testpoints.md      test point matrix + results
 docs/ppa.md             synthesis / PPA results
@@ -205,6 +206,7 @@ python scripts/verify_wfa.py
 ```
 bash synth/run_synth.sh         # fast: area/depth per shape
 bash synth/run_synth.sh fair    # optional fair variant
+bash synth/run_synth.sh sky130  # SKY130HD: cells, AOI21 count, ABC delay
 ```
 
 ## Parameters

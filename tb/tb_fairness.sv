@@ -40,7 +40,11 @@ module fairness_runner #(
     logic [M-1:0]  o_dest_vld;
     logic [M*CWN-1:0] o_dest_ptr;
 
+`ifdef WTF_DUT
+    fair_arbiter_wtf #(.N(N), .M(M), .PTR_RESET(1)) dut (
+`else
     fair_arbiter #(.N(N), .M(M), .PTR_RESET(1)) dut (
+`endif
         .clk(clk), .rst_n(rst_n),
         .i_src_dest_req(i_req), .i_src_bp(i_src_bp), .i_dest_bp(i_dest_bp),
         .o_grant_rand_vld(o_grant),

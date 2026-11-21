@@ -253,6 +253,27 @@ Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first pass + WFA fill):
 per-port iSLIP grant/accept layer before the WFA residual fill; multi-source
 Jain averages improve at the cost of roughly 2x the fast variant's depth.
 
+WTF-style prototype (`rtl/fair_arbiter_wtf.v`, comparison only): iSLIP
+first pass + row-serial waterfall fill.  8x8 3100/122, 10x10 6924/187.
+It passes all 42 strict RR checks, all 18 maximality shapes (0 non-max
+cycles), and gives K-regular Jain 1.000 (random 10x10: 0.910-0.923 src /
+0.900-0.956 dst), but the serial fill dominates the depth.  With `FILL=0`
+(first pass only) it is 1467/27 (8x8) and 2564/32 (10x10), but 394/476
+non-maximal cycles at 8x8/10x10, so the fill is mandatory.  This prototype
+does not reproduce the paper's cell-level waterfall; see
+`docs/literature.md` section 4.2.
+
+Reproduce the WTF prototype checks:
+
+```sh
+iverilog -g2012 -DWTF_DUT -s tb_fairness_top -o /tmp/wtf_fair.vvp \
+    rtl/fair_arbiter_wtf.v tb/tb_fairness.sv && vvp /tmp/wtf_fair.vvp
+iverilog -g2012 -DWTF_DUT -s tb_maximal_top -o /tmp/wtf_max.vvp \
+    rtl/fair_arbiter_wtf.v tb/tb_maximal.sv && vvp /tmp/wtf_max.vvp
+iverilog -g2012 -DWTF_DUT -s tb_jain_top -o /tmp/wtf_jain.vvp \
+    rtl/fair_arbiter_wtf.v tb/tb_jain.sv && vvp /tmp/wtf_jain.vvp
+```
+
 Delta-register path optimization: `wfa_core` enables the δ register with
 `any_req = |req_pad` (an OR reduction of the effective request matrix) instead
 of `any_grant = |match_accept`.  For a maximal WFA these are functionally

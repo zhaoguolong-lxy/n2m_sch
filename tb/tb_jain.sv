@@ -32,7 +32,11 @@ module jain_runner #(
     integer ssum, sq, nsrc, dsum, dq, ndst;
     real jsum_src, jsum_dst, jv;
 
+`ifdef WTF_DUT
+    fair_arbiter_wtf #(.N(N), .M(M), .PTR_RESET(1), .NSCHED(NSCHED)) dut (
+`else
     fair_arbiter #(.N(N), .M(M), .PTR_RESET(1), .NSCHED(NSCHED)) dut (
+`endif
         .clk(clk), .rst_n(rst_n),
         .i_src_dest_req(req), .i_src_bp(src_bp), .i_dest_bp(dest_bp),
         .o_grant_rand_vld(g_rand), .o_grant_src_vld(g_src),

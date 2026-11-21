@@ -251,6 +251,25 @@ Liu、Jantsch、Lu 的 WTF allocator [15][16]：
 drop-in；如果 wavefront+ 和 replicate/MARX 能把 35 级压到目标，优先级
 应低于这两者。
 
+**本项目 WTF-style 原型实测**（`rtl/fair_arbiter_wtf.v`，iSLIP 首轮 +
+行串行 waterfall fill；不是论文的逐门复刻）：
+
+| 指标 | 8x8 | 10x10 |
+|------|-----|-------|
+| cells / levels（FILL=1） | 3100 / 122 | 6924 / 187 |
+| cells / levels（FILL=0，仅首轮） | 1467 / 27 | 2564 / 32 |
+| 非极大拍数（FILL=0） | 394 / 773 | 476 / 773 |
+| 非极大拍数（FILL=1） | 0 / 773 | 0 / 773 |
+| 严格 RR | 42/42 | 42/42 |
+| K-regular Jain | 1.000 | 1.000 |
+| 随机 10x10 Jain | - | 0.910-0.923 src / 0.900-0.956 dst |
+
+结论：**算法级上“极大 + 强 RR”可以在一拍内做到**，但朴素的 per-row
+priority encoder + 行 ripple 把深度推到 122/187 级，远高于当前 WFA 的
+31/35 级。论文的 90nm 1GHz 依赖其未公开的 cell 级 waterfall 结构，
+不能按“行贪心”直接复现。这个原型验证了 WTF 的公平性承诺，但也说明
+它**不是**当前架构的深度替代品。
+
 ### 4.3 饥饿防止（starvation-free）与严格 RR 的区别
 
 Chi & Tamir 的 SP token ring [4] 保证“最终被服务”，但不保证“每次授出后

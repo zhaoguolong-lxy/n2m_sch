@@ -22,8 +22,9 @@ from collections import deque
 
 N = 10
 M = 10
-Q = 20          # packets per source
-CYCLES_CAP = 4000
+Q = 200         # packets per source
+SEEDS = 10
+CYCLES_CAP = 20000
 
 
 def gcd(a, b):
@@ -162,26 +163,27 @@ def run(window, seed, sched):
                 if any(col):
                     gp[j] = (col.index(1) + 1) % N
         t += 1
-    return t, finish
+    return t, finish, sum(finish)
 
 
 
 def main():
-    print("Shared-queue drain (10x10, 20 packets/source, 10 seeds)")
+    print("Shared-queue drain (10x10, %d packets/source, %d seeds)" % (Q, SEEDS))
     print("window = entries exposed per source each cycle (1 = FIFO head only)")
-    print("%-7s %-6s %10s %12s %10s" %
-          ("window", "sched", "makespan", "finish-Jain", "spread"))
+    print("%-7s %-6s %10s %10s %12s %10s" %
+          ("window", "sched", "makespan", "pkt/cyc", "finish-Jain", "spread"))
     for window in (1, 2, 4, 10):
         for sched in ("wfa1", "wfa2", "wfa4", "fair", "max"):
-            ms, jf, sp = 0.0, 0.0, 0.0
-            seeds = 10
-            for s in range(seeds):
-                t, fin = run(window, s, sched)
+            ms, jf, sp, th = 0.0, 0.0, 0.0, 0.0
+            for s in range(SEEDS):
+                t, fin, _ = run(window, s, sched)
                 ms += t
                 jf += jain(fin)
                 sp += max(fin) - min(fin)
-            print("%-7d %-6s %10.1f %12.3f %10.1f" %
-                  (window, sched, ms / seeds, jf / seeds, sp / seeds))
+                th += (N * Q) / float(t)
+            print("%-7d %-6s %10.1f %10.2f %12.3f %10.1f" %
+                  (window, sched, ms / SEEDS, th / SEEDS,
+                   jf / SEEDS, sp / SEEDS))
     print("max = maximum-cardinality reference (augmenting paths), not")
     print("realizable single-cycle; the arbiter's maximal matching is within")
     print("noise of it once the window is >= 4.")

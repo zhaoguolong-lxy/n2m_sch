@@ -46,28 +46,36 @@ Application model: each source owns one shared queue holding packets for
 several destinations.  Every cycle the source exposes a window of W entries
 as `i_src_dest_req`; the arbiter grants at most one packet per source and per
 destination.  `scripts/queue_drain.py` measures the drain time and source
-fairness (10x10, 20 packets/source, 10 seeds):
+fairness (10x10, 200 packets/source, 10 seeds):
 
-| window W | WFAx1 makespan | WFAx4 makespan | fair makespan | max-matching ref |
-|----------|----------------|----------------|---------------|------------------|
-| 1 (FIFO head) | 36.6 | 37.6 | 37.7 | 41.8 |
-| 2 | 31.8 | 32.7 | 31.5 | 36.3 |
-| 4 | 29.6 | 29.6 | 28.9 | 31.7 |
-| 10 (full buffer) | 28.7 | 28.4 | 28.5 | 28.4 |
-
-finish-Jain (per-source finish cycles) is 0.98-0.99 for the WFA and fair
-schedules at every window; the maximum-cardinality reference is worse
-(0.947-0.985) because its tie-break starves individual sources.
+| window W | scheme | makespan | pkt/cycle | finish Jain | finish spread |
+|----------|--------|----------|-----------|-------------|---------------|
+| 1 (FIFO head) | WFAx1 | 337 | 5.93 | 0.999 | 39 |
+| 1 | WFAx4 | 342 | 5.85 | 0.998 | 41 |
+| 1 | fair | 339 | 5.91 | 0.999 | 40 |
+| 1 | max-cardinality ref | 410 | 4.89 | 0.952 | 210 |
+| 4 | WFAx1 | 258 | 7.74 | 0.999 | 26 |
+| 4 | WFAx4 | 260 | 7.68 | 0.999 | 29 |
+| 4 | fair | 258 | 7.75 | 0.999 | 30 |
+| 4 | max-cardinality ref | 323 | 6.21 | 0.972 | 123 |
+| 10 (full buffer) | WFAx1 | 236 | 8.49 | 0.999 | 20 |
+| 10 | WFAx4 | 235 | 8.52 | 0.999 | 20 |
+| 10 | fair | 232 | 8.62 | 0.999 | 19 |
+| 10 | max-cardinality ref | 246 | 8.16 | 0.996 | 46 |
 
 Takeaways:
 
 - the request window dominates: exposing 4 entries instead of only the head
-  cuts the drain time by about 19%.  The arbiter cannot recover head-of-line
-  blocking caused by a strict FIFO in the front end;
-- with a maximal matcher, every source that has a free requested destination
-  is served every cycle, so the arbiter itself adds no wasted cycles;
-- the multi-schedule WFA keeps source fairness without a makespan cost, and
-  with a full buffer it matches the maximum-cardinality reference (28.4);
+  cuts the drain time by 23% (337 -> 258 cycles), and a full buffer by 30%
+  (235).  The arbiter cannot recover head-of-line blocking caused by a strict
+  FIFO in the front end;
+- with a maximal matcher every source that has a free requested destination is
+  served every cycle, so the arbiter itself adds no wasted cycles;
+- fairness also buys throughput: the cardinality-only reference is much worse
+  at small windows (410 vs 337 cycles, finish spread 210 vs 39) because it
+  starves some sources; the rotating WFA finishes all sources together;
+- WFAx1/2/4 are within ~1% on makespan; the multi-schedule's gain is the
+  persistent-traffic Jain index (0.89-0.93 vs 0.82-0.83), not the drain time;
 - one grant per source per cycle is an interface property (`o_grant_src_vld`
   is one bit per source), so the per-source drain rate is capped at one
   packet/cycle by construction.

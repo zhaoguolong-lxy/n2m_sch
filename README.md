@@ -83,6 +83,15 @@ The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst
 for NSCHED=4 on three persistent patterns).  `NSCHED` is a parameter:
 NSCHED=1 restores the minimal-area schedule, NSCHED=2 is the middle point.
 
+### Shared-queue drain
+
+When each source owns one multi-destination queue, the drain rate is set by
+how much of the queue the front end exposes.  For 10x10 and 200 packets per
+source: head-only FIFO 337 cycles, window 4 258 cycles, full buffer 235
+cycles.  The arbiter's maximal matching adds no wasted cycles, and the
+cardinality-only reference is *worse* (410 cycles) because it starves
+sources.  Details and the full table: `docs/perf.md`.
+
 Fair variant verification: main regression 295,848 checks PASS; maximality
 18/18 (0 non-max / 0 wasted); 4-shape soak x 1500 PASS; 10x10 x 20,000 soak
 PASS (146,021 grants, 0 violations); strict fairness 42/42.

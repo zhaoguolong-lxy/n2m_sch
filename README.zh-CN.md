@@ -101,6 +101,7 @@ rtl/fair_arbiter.v          顶层 WFA wrapper（原始接口不变；N、M、PT
 rtl/wfa_core.v              内部 P 级波前核心（内部扁平接口）
 rtl/fair_arbiter_fair.v    可选 fair 版（iSLIP 首轮 + WFA fill）
 rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
+rtl/reference/fair_arbiter_dpa.v    单遍 DPA（21 级，非极大）
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）

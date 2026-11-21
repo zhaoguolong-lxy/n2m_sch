@@ -184,8 +184,33 @@ patterns):
 | **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
 | iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
-`tb/tb_jain.sv` measures the same effect on the RTL (0.914-0.933 src /
-0.895-0.934 dst for NSCHED=4).  The four wavefronts are independent and
+Saturated uniform traffic (K-regular graphs): every source asks K
+destinations and every destination is asked by K sources, i.e. full load with
+perfectly balanced degrees.  `circ` is the diagonal-aligned pattern
+(source i asks i..i+K-1), `rnd` is the same graph with random row/column
+permutations.  src Jain (dst is identical for the circulant):
+
+| K | shape | WFAx1 | WFAx2 | WFAx4 | iSLIP first + fill |
+|---|-------|-------|-------|-------|--------------------|
+| 10 | circ / rnd | 1.000 | 1.000 | 1.000 | 1.000 |
+| 8 | circ | 0.781 | 0.926 | 0.935 | 0.922 |
+| 8 | rnd | 0.907 | 0.956 | 0.965 | 0.987 |
+| 5 | circ | 0.500 | 0.635 | 0.812 | 0.960 |
+| 5 | rnd | 0.833 | 0.897 | 0.928 | 0.980 |
+| 3 | circ | 0.505 | 0.593 | 0.771 | 1.000 |
+| 3 | rnd | 0.812 | 0.860 | 0.922 | 0.983 |
+
+The full crossbar is trivial.  The weak spot is a narrow diagonal-aligned
+pattern: with K=5 the rotating diagonal repeats the same destination for 6 of
+the 10 phases, so the single schedule gives Jain 0.5 even though every cycle
+is fully matched.  The 4-schedule version lifts that to 0.81 at 35 levels;
+per-port iSLIP reaches 0.96-1.00 but costs 74 levels.  For narrow regular
+traffic, per-port RR remains the strongest fairness mechanism.
+
+`tb/tb_jain.sv` measures the same effect on the RTL and reproduces the table
+exactly: random patterns 0.914-0.933 src / 0.895-0.934 dst for NSCHED=4, and
+the K-regular mode (MODE=1) gives 0.781/0.935 (K=8), 0.500/0.812 (K=5) and
+0.505/0.771 (K=3) for NSCHED=1/4.  The four wavefronts are independent and
 combinational, so the matcher depth is unchanged at 10x10; the cost is about
 2x the cell area and 4x the matcher switching activity.
 

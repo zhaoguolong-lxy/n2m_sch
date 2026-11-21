@@ -12,7 +12,9 @@ module jain_runner #(
     parameter integer M = 10,
     parameter integer NSCHED = 4,
     parameter integer N_CYC = 3000,
-    parameter integer SEED = 3
+    parameter integer SEED = 3,
+    parameter integer MODE = 0,   // 0 = LFSR pattern, 1 = K-regular
+    parameter integer DEG = 5     // K for MODE=1
 );
     logic clk = 0;
     logic rst_n = 0;
@@ -51,13 +53,21 @@ module jain_runner #(
     initial begin
         for (i = 0; i < N; i = i + 1)
             for (j = 0; j < M; j = j + 1) cnt[i][j] = 0;
-        c = SEED;
-        for (i = 0; i < N; i = i + 1) begin
-            for (j = 0; j < M; j = j + 1) begin
-                c = c * 1103515245 + 12345;
-                req[i*M+j] = ((c >> 16) & 1);
+        if (MODE == 0) begin
+            c = SEED;
+            for (i = 0; i < N; i = i + 1) begin
+                for (j = 0; j < M; j = j + 1) begin
+                    c = c * 1103515245 + 12345;
+                    req[i*M+j] = ((c >> 16) & 1);
+                end
+                if (!(|req[i*M +: M])) req[i*M] = 1'b1;
             end
-            if (!(|req[i*M +: M])) req[i*M] = 1'b1;
+        end else begin
+            // K-regular circulant: source i asks (i .. i+K-1) mod M, so every
+            // source and every destination has degree K (saturated + uniform).
+            for (i = 0; i < N; i = i + 1)
+                for (j = 0; j < M; j = j + 1)
+                    req[i*M+j] = (((j + M - i) % M) < DEG);
         end
         #20 rst_n = 1'b1;
         repeat (N_CYC) @(posedge clk);
@@ -96,8 +106,8 @@ module jain_runner #(
             end
         end
         if (nsrc > 0 && ndst > 0)
-            $display("RESULT seed=%0d nsched=%0d src_jain=%.3f dst_jain=%.3f",
-                     SEED, NSCHED, jsum_src / nsrc, jsum_dst / ndst);
+            $display("RESULT mode=%0d deg=%0d seed=%0d nsched=%0d src_jain=%.3f dst_jain=%.3f",
+                     MODE, DEG, SEED, NSCHED, jsum_src / nsrc, jsum_dst / ndst);
         $finish;
     end
 endmodule
@@ -112,4 +122,15 @@ module tb_jain_top;
     jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(7)) u6 ();
     jain_runner #(.N(10), .M(10), .NSCHED(2), .SEED(7)) u7 ();
     jain_runner #(.N(10), .M(10), .NSCHED(4), .SEED(7)) u8 ();
+
+    // saturated uniform traffic: K-regular circulant
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(8)) r0 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(8)) r1 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(8)) r2 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(5)) r3 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(5)) r4 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(5)) r5 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(3)) r6 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(3)) r7 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(3)) r8 ();
 endmodule

@@ -145,6 +145,49 @@ def run(N, M, cycles, pattern, seed, nsched, hybrid=False):
     return (sum(js) / len(js), sum(jd) / len(jd))
 
 
+def regular_req(N, M, K, seed=None):
+    """K-regular request matrix: source i asks (i..i+K-1) mod M.  With a
+    random row/column permutation this is a random K-regular bipartite graph
+    (every source and every destination has degree K)."""
+    req = [[1 if (j - i) % M < K else 0 for j in range(M)] for i in range(N)]
+    if seed is not None:
+        rng = random.Random(seed)
+        rows = list(range(N))
+        cols = list(range(M))
+        rng.shuffle(rows)
+        rng.shuffle(cols)
+        req = [[req[rows[i]][cols[j]] for j in range(M)] for i in range(N)]
+    return req
+
+
+def run_req(req, N, M, cycles, nsched):
+    perms = [[(c * i) % N for i in range(N)]
+             for c in coprime_list(N, nsched)]
+    sw = [[0] * M for _ in range(N)]
+    d = 0
+    t = 0
+    for _ in range(cycles):
+        g = wfa_match(req, N, M, d, perms[(t // max(N, M)) % len(perms)])
+        for i in range(N):
+            for j in range(M):
+                if g[i][j]:
+                    sw[i][j] += 1
+        if any(map(any, g)):
+            d = (d + 1) % max(N, M)
+            t += 1
+    js = []
+    jd = []
+    for i in range(N):
+        v = [sw[i][j] for j in range(M) if req[i][j]]
+        if len(v) > 1:
+            js.append(jain(v))
+    for j in range(M):
+        v = [sw[i][j] for i in range(N) if req[i][j]]
+        if len(v) > 1:
+            jd.append(jain(v))
+    return sum(js) / len(js), sum(jd) / len(jd)
+
+
 def main():
     N = M = 10
     print("10x10 multi-source fairness model (Jain index, 1.0 = uniform)")
@@ -166,6 +209,21 @@ def main():
               (name, rf[0], rf[1]))
     print("full crossbar is 1.000 for every scheme; the fair variant is not")
     print("a strict all-traffic RR guarantee (fill-only ports are approximate).")
+
+    print()
+    print("Saturated uniform traffic: K-regular request graph")
+    print("(every source asks K destinations, every destination is asked by K")
+    print("sources).  'circ' is the diagonal-aligned pattern, 'rnd' is the same")
+    print("graph with random row/column permutations.")
+    print("%-6s %-5s %10s %10s %10s" % ("K", "shape", "WFAx1 src", "WFAx2 src", "WFAx4 src"))
+    for K in (10, 8, 5, 3):
+        for tag, seed in (("circ", None), ("rnd", 7)):
+            req = regular_req(N, M, K, seed)
+            r1 = run_req(req, N, M, 2000, 1)
+            r2 = run_req(req, N, M, 2000, 2)
+            r4 = run_req(req, N, M, 2000, 4)
+            print("%-6d %-5s %10.3f %10.3f %10.3f" %
+                  (K, tag, r1[0], r2[0], r4[0]))
 
 
 if __name__ == "__main__":

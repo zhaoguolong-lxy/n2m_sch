@@ -45,14 +45,14 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [Fair variant: iSLIP first pass + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
-The default RTL (`rtl/fair_arbiter.v`) is WFA + the single-side fairness
-override; 10x10 maps to **5149 cells / 35 gate levels** (the override runs in
-parallel, so the WFA path is still critical), vs 11821 cells / 300 levels for
-the iSLIP+fill version.  Pure WFA (no override) is 2062 cells / 35 levels.
-General traffic is maximal but not maximum-cardinality; mixed-traffic per-port
-RR order remains relaxed.  Single-source and single-destination sequences are
-strict RR (42/42 tests).  The <=40-level target is met at 8x8 (28), 10x10 (35),
-9x11 (36), 11x9 (35); 16x16 is outside this variant's target.
+The default RTL (`rtl/fair_arbiter.v`) is a four-schedule WFA plus the
+single-side fairness override; 10x10 maps to **10711 cells / 35 gate levels**
+(the four wavefronts and the override run in parallel), vs 11821 cells / 300
+levels for the iSLIP+fill version.  A single-schedule WFA (NSCHED=1) is 5274
+cells / 35 levels.  General traffic is maximal but not maximum-cardinality.
+Single-source and single-destination sequences are strict RR (42/42 tests).
+The <=40-level target is met at 8x8 (31), 10x10 (35), 9x11 (36), 11x9 (38);
+16x16 is outside this variant's target.
 
 ## Fast vs fair variants
 
@@ -61,9 +61,27 @@ internal scheduling.
 
 | Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
 |---------|-----|-------------------------------------------|-----------------------|-----------|
-| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | WFA statistical (count/coverage) | **5149 cells / 35 levels** |
-| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill; better average Jain | 5119 cells / 74 levels |
+| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA (Jain 0.89-0.93 src / 0.92-0.95 dst) | **10711 cells / 35 levels** |
+| **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 5119 cells / 74 levels |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
+
+### Multi-schedule fairness (area trade)
+
+`rtl/fair_arbiter.v` runs `NSCHED` wavefronts in parallel.  Schedule s
+permutes the core rows by `r -> (c_s*r) mod N` with a different coprime `c_s`
+(pure wiring, no mux), and the selected schedule rotates every P grants.
+This flattens the long-run grant distribution:
+
+| Scheme | src Jain (10x10) | dst Jain (10x10) | 10x10 cells / levels |
+|--------|------------------|------------------|----------------------|
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
+| **NSCHED=4 (default)** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| fair variant | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
+
+The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst
+for NSCHED=4 on three persistent patterns).  `NSCHED` is a parameter:
+NSCHED=1 restores the minimal-area schedule, NSCHED=2 is the middle point.
 
 Fair variant verification: main regression 295,848 checks PASS; maximality
 18/18 (0 non-max / 0 wasted); 4-shape soak x 1500 PASS; 10x10 x 20,000 soak
@@ -72,8 +90,8 @@ Its multi-source Jain averages (10x10 model, 3000-cycle
 persistent patterns): pure WFA src 0.819-0.834 / dst 0.804-0.891; fair src
 0.866-0.895 / dst 0.912-0.934.  Full crossbar is 1.000 for both.  The fair
 variant is not a mathematical all-traffic RR guarantee (fill-only ports are
-approximate), but it is the best single-cycle compromise; more iSLIP iterations
-or the strict reference cost more depth.
+approximate).  The 4-schedule fast default is fairer on average at less than
+half the depth; the fair variant is kept as an independent alternative.
 
 Run the fair variant:
 
@@ -95,12 +113,14 @@ rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)
+tb/tb_jain.sv           multi-source Jain index on the RTL (NSCHED 1/2/4)
 tb/tb_fairness.sv       strict fairness tests for the fast variant
 tb/tb_fairness_fair.sv  strict fairness tests for the fair variant
 tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
 scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
-scripts/fairness_compare.py  multi-source Jain model: fast vs fair
+scripts/fairness_compare.py  multi-source Jain model: WFAx1/x2/x4 vs fair
+scripts/queue_drain.py      shared-queue drain model (window sweep)
 scripts/verify_maximal.py  same check for the old iSLIP+fill reference
 sim/run_sim.sh          compile + run wrapper (optional)
 sim/run_all.sh          full verification suite (all of the above)

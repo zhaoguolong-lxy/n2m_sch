@@ -102,8 +102,22 @@ The iSLIP reference model is still checked by `scripts/verify_maximal.py`
 
 Both fast and fair RTL pass **42/42** strict checks.  The fair variant
 (`rtl/fair_arbiter_fair.v`) adds an iSLIP first pass before the WFA fill for
-better multi-source fairness; the fast default uses the parallel single-side
-override only.
+better multi-source fairness.  The fast default adds the parallel single-side
+override plus `NSCHED=4` wavefront schedules: each schedule is a fixed coprime
+row permutation, and the selected schedule rotates every P grants.
+
+`tb/tb_jain.sv` measures multi-source fairness on the RTL (10x10, 3000-cycle
+persistent patterns, three seeds):
+
+| Scheme | src Jain | dst Jain |
+|--------|----------|----------|
+| NSCHED=1 | 0.821-0.887 | 0.805-0.871 |
+| NSCHED=2 | 0.867-0.901 | 0.873-0.905 |
+| **NSCHED=4 (default)** | **0.914-0.933** | **0.895-0.934** |
+
+The 4-schedule version beats the iSLIP-first fair variant (0.866-0.895 /
+0.912-0.934) on average, at 35 levels instead of 74; the cost is about 2x the
+cell area and 4x matcher switching.
 
 The default RTL uses a WFA core plus a parallel single-source /
 single-destination RR override (`a_ptr`/`g_ptr`).  General mixed traffic stays
@@ -124,7 +138,8 @@ is an error.  `tb_maximal.sv` also checks orthogonality and that
 ## 2. Results
 
 Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 22 configurations
-passed; total 295,797 checks, 0 errors.  Strict single-source/single-destination
+passed; total 295,830 checks, 0 errors (the count shifts slightly with the
+matching pattern).  Strict single-source/single-destination
 fairness (`tb_fairness.sv` and `tb_fairness_fair.sv`) passes **42/42 with 0
 errors** on both variants.  The fair-variant main regression is **295,848
 checks, 0 errors**.  The source/protocol checks are

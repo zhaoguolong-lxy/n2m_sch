@@ -43,7 +43,7 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [fair 变体：iSLIP 首轮 + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
-（`rtl/fair_arbiter.v`，默认 RTL）10x10 综合为 **5149 cells / 35 级**；覆盖逻辑与 WFA 并行，关键路径仍是 WFA。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配，混合流量 per-port RR 顺序仍是 WFA 的计数/覆盖公平；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（28/35/36/35），16x16 不在本变体目标内。
+（`rtl/fair_arbiter.v`，默认 RTL）是 4 调度波前 + 单侧公平覆盖，10x10 综合为 **10711 cells / 35 级**（4 个波前和覆盖逻辑并行）；单调度版本（NSCHED=1）为 5274 cells / 35 级。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（31/35/36/38），16x16 不在本变体目标内。
 
 ## fast / fair 两个版本
 
@@ -51,9 +51,25 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 
 | 版本 | RTL | 单源/单目的严格 RR | 多源公平 | 10x10 PPA |
 |------|-----|--------------------|----------|-----------|
-| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | WFA 统计公平（计数/覆盖） | **5149 cells / 35 级** |
-| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill，平均 Jain 更高 | 5119 cells / 74 级 |
+| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | 4 调度 WFA（Jain 0.89-0.93 src / 0.92-0.95 dst） | **10711 cells / 35 级** |
+| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 5119 cells / 74 级 |
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
+
+### 多调度公平（面积换公平）
+
+`rtl/fair_arbiter.v` 并行跑 `NSCHED` 个波前。第 s 个调度把 core 的行按
+`r -> (c_s*r) mod N` 置换（`c_s` 与 N 互质，纯布线，无 mux），输出每 P 个授予
+切换一次调度：
+
+| 方案 | src Jain（10x10） | dst Jain（10x10） | 10x10 cells / 级数 |
+|------|-------------------|-------------------|--------------------|
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
+| **NSCHED=4（默认）** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| fair 变体 | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
+
+RTL 检查 `tb/tb_jain.sv` 实测 NSCHED=4 为 0.914-0.933 src / 0.895-0.934 dst。
+`NSCHED` 是参数：NSCHED=1 回到最小面积，NSCHED=2 是中间点。
 
 fair 版验证：主回归 295,848 checks PASS；极大性 18/18；4 形状 soak × 1500
 PASS；10x10 × 20,000 soak PASS（146,021 grants，0 违规）；严格公平 42/42。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
@@ -81,12 +97,14 @@ rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）
+tb/tb_jain.sv               RTL 上测多源 Jain（NSCHED 1/2/4）
 tb/tb_fairness.sv           严格公平测试（fast 版）
 tb/tb_fairness_fair.sv      严格公平测试（fair 版）
 tb/tb_perf.sv               吞吐基准
 tb/tb_x_check.sv            复位 / X 态检查
 scripts/verify_wfa.py       WFA 算法级穷举极大性 / 正交性验证
-scripts/fairness_compare.py  多源 Jain 模型：fast vs fair
+scripts/fairness_compare.py  多源 Jain 模型：WFAx1/x2/x4 vs fair
+scripts/queue_drain.py      共享队列排空模型（窗口扫描）
 scripts/verify_maximal.py   旧 iSLIP+fill 参考实现的同类验证
 diagram/circuit/            WFA 电路级 PNG 方案图（总 / 分）
 diagram/                    旧 iSLIP 方案图 + 算法动画（SVG）

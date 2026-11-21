@@ -29,8 +29,9 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 | 11x9 | 9 | 0 | 9.00/9 (100%) | 8.67/9 (96%) |
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first + WFA fill): 10x10
-first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The fast default is
-8.95/10 (89%) at depth 36.
+first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The 4-schedule fast default is
+8.87/10 (89%) at depth 35 (the single-schedule WFA measured 8.95/10; the
+difference is within run-to-run noise).
 
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
@@ -38,6 +39,38 @@ versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
 WFA + single-side fairness override (2,062 for the pure WFA).  The override is
 only selected in single-source/single-destination traffic; the random/full
 crossbar numbers above are the WFA path and are unchanged.
+
+## Shared-queue drain (one multi-destination queue per source)
+
+Application model: each source owns one shared queue holding packets for
+several destinations.  Every cycle the source exposes a window of W entries
+as `i_src_dest_req`; the arbiter grants at most one packet per source and per
+destination.  `scripts/queue_drain.py` measures the drain time and source
+fairness (10x10, 20 packets/source, 10 seeds):
+
+| window W | WFAx1 makespan | WFAx4 makespan | fair makespan | max-matching ref |
+|----------|----------------|----------------|---------------|------------------|
+| 1 (FIFO head) | 36.6 | 37.6 | 37.7 | 41.8 |
+| 2 | 31.8 | 32.7 | 31.5 | 36.3 |
+| 4 | 29.6 | 29.6 | 28.9 | 31.7 |
+| 10 (full buffer) | 28.7 | 28.4 | 28.5 | 28.4 |
+
+finish-Jain (per-source finish cycles) is 0.98-0.99 for the WFA and fair
+schedules at every window; the maximum-cardinality reference is worse
+(0.947-0.985) because its tie-break starves individual sources.
+
+Takeaways:
+
+- the request window dominates: exposing 4 entries instead of only the head
+  cuts the drain time by about 19%.  The arbiter cannot recover head-of-line
+  blocking caused by a strict FIFO in the front end;
+- with a maximal matcher, every source that has a free requested destination
+  is served every cycle, so the arbiter itself adds no wasted cycles;
+- the multi-schedule WFA keeps source fairness without a makespan cost, and
+  with a full buffer it matches the maximum-cardinality reference (28.4);
+- one grant per source per cycle is an interface property (`o_grant_src_vld`
+  is one bit per source), so the per-source drain rate is capped at one
+  packet/cycle by construction.
 
 ## iSLIP reference results (old default)
 
@@ -154,7 +187,7 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
    at 10x10 versus 36 for the default WFA + override (35 pure WFA).
 
-3. **Depth/area (10x10)**: 5149 cells / 35 levels for the default (WFA + single-side override); pure WFA is 2062/35,
+3. **Depth/area (10x10)**: 10711 cells / 35 levels for the 4-schedule default (NSCHED=1: 5274 / 35); pure WFA is 2062/35,
    versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
    the per-source/per-destination RR selectors but runs in parallel; the WFA
    path stays critical.  The design removes

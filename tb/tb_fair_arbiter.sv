@@ -130,7 +130,10 @@ module tb_core #(
 `ifdef FAIR_DUT
             $deposit(dut.u_fill.delta, '0);
 `else
-            $deposit(dut.u_core.delta, '0);
+            $deposit(dut.g_sched[0].u_core.delta, '0);
+            $deposit(dut.g_sched[1].u_core.delta, '0);
+            $deposit(dut.g_sched[2].u_core.delta, '0);
+            $deposit(dut.g_sched[3].u_core.delta, '0);
 `endif
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);

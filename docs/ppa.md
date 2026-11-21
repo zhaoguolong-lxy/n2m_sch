@@ -154,7 +154,7 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| WFA + single-side RR override (fast default) | **28** | **35** | **36** | **35** | out of target |
+| Multi-schedule WFA + override (fast default) | **31** | **35** | **36** | **38** | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=40 | <=40 | <=40 | <=40 | <=40 |
@@ -166,10 +166,28 @@ Default WFA + single-side RR override:
 
 | Config | cells | levels |
 |--------|-------|--------|
-| 8x8 | 2985 | 28 |
-| 10x10 | 5149 | 35 |
-| 9x11 | 5065 | 36 |
-| 11x9 | 5032 | 35 |
+| 8x8 | 6655 | 31 |
+| 10x10 | 10711 | 35 |
+| 9x11 | 10426 | 36 |
+| 11x9 | 10692 | 38 |
+
+Multi-schedule WFA (default): `rtl/fair_arbiter.v` runs NSCHED wavefronts in
+parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
+(pure wiring), and rotates the selected schedule every P grants.  `NSCHED` is
+a parameter (default 4).  Fairness model (10x10, 3000-cycle persistent
+patterns):
+
+| Scheme | src Jain | dst Jain | 10x10 cells / levels |
+|--------|----------|----------|----------------------|
+| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
+| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
+| **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
+
+`tb/tb_jain.sv` measures the same effect on the RTL (0.914-0.933 src /
+0.895-0.934 dst for NSCHED=4).  The four wavefronts are independent and
+combinational, so the matcher depth is unchanged at 10x10; the cost is about
+2x the cell area and 4x the matcher switching activity.
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -225,8 +243,10 @@ Redundancy removal (same behaviour, fast and fair):
   encode the pointers from the final match, so the core encoders were dead
   logic that still loaded `match_accept` before ABC mapping.
 
-Net at 10x10: fast 5488 -> 5149 cells (-6%), depth unchanged at 35; fair
-5474 -> 5119 (-6.5%).  The request-mask network is still built once in the
+Net: with a single schedule the 10x10 fast wrapper drops from 5488 to 5149
+cells (-6%) at the same 35 levels, and the fair variant from 5474 to 5119
+(-6.5%).  The multi-schedule default adds the extra wavefronts on top (10711
+cells / 35 levels).  The request-mask network is still built once in the
 wrapper (`eff_req`) and once in the core: sharing it was measured, but it
 raises the `eff_req` fanout and cost two levels at 8x8, so each side keeps its
 own local mask.

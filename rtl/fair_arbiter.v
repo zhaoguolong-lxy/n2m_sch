@@ -34,7 +34,8 @@
 `default_nettype none
 
 module fair_arbiter #(
-    parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1
+    parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1,
+    parameter integer NSCHED=4
 ) (
     input wire clk, rst_n,
     input wire [N-1:0][M-1:0] i_src_dest_req,
@@ -48,56 +49,130 @@ module fair_arbiter #(
 );
     localparam integer CWN=$clog2(N), CWM=$clog2(M), NM=N*M;
     localparam integer NC=(N<M)?N:M, MC=(N>M)?N:M;
-    genvar i,j,b;
+    genvar i,j,b,sc;
 
     // Masked request matrix for the single-side override.  The WFA core builds
     // its own copy from the raw request and backpressure; sharing one matrix
     // raises the fanout and is slower at small shapes.
     wire [NM-1:0] eff_req;
 
-    // WFA core (general traffic, maximal/no-waste)
-    wire [NC*MC-1:0] core_req, core_grant;
-    wire [NC-1:0] core_src_bp, core_src_vld;
-    wire [MC-1:0] core_dest_bp, core_dest_vld;
-    wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET)) u_core (
-        .clk(clk), .rst_n(rst_n), .i_req_flat(core_req),
-        .i_src_bp(core_src_bp), .i_dest_bp(core_dest_bp),
-        .o_grant_flat(core_grant), .o_src_vld(core_src_vld),
-        .o_dest_vld(core_dest_vld)
-    );
+    // ------------------------------------------------------------------
+    // Multi-schedule WFA.  NSCHED wavefronts run in parallel; schedule s
+    // permutes the core rows by r -> (c_s*r) mod NC (pure wiring, no mux).
+    // The schedule rotates every MC grants.  Each schedule is a different
+    // diagonal-priority order, so the long-run grant distribution is much
+    // flatter than a single rotating diagonal.
+    // ------------------------------------------------------------------
+    localparam integer NS = (NSCHED < 1) ? 1 : (NSCHED > 4 ? 4 : NSCHED);
+
+    // The schedule multiplier must be coprime to NC, otherwise the row
+    // permutation would repeat/skip rows.  Evaluate the table at elaboration.
+    function automatic integer gcd_i;
+        input integer a, b;
+        integer x, y, t;
+        begin
+            x = a; y = b;
+            while (y != 0) begin t = x % y; x = y; y = t; end
+            gcd_i = x;
+        end
+    endfunction
+
+    function automatic integer perm_mul;
+        input integer sl;
+        input integer n;
+        integer c, sel, mul, found;
+        begin
+            sel = sl; mul = 1; found = 0;
+            for (c = 1; c < n && !found; c = c + 1) begin
+                if (gcd_i(c, n) == 1) begin
+                    if (sel == 0) begin mul = c; found = 1; end
+                    else sel = sel - 1;
+                end
+            end
+            perm_mul = mul;
+        end
+    endfunction
+
+    wire [NS*NM-1:0] wfa_match_s;
+    wire [NS*N-1:0]  wfa_sv_s;
+    wire [NS*M-1:0]  wfa_dv_s;
+
+    generate
+        for (sc=0; sc<NS; sc=sc+1) begin : g_sched
+            localparam integer CMUL = perm_mul(sc, NC);
+            wire [NC*MC-1:0] core_req_s, core_grant_s;
+            wire [NC-1:0] core_src_bp_s, core_src_vld_s;
+            wire [MC-1:0] core_dest_bp_s, core_dest_vld_s;
+
+            wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET)) u_core (
+                .clk(clk), .rst_n(rst_n), .i_req_flat(core_req_s),
+                .i_src_bp(core_src_bp_s), .i_dest_bp(core_dest_bp_s),
+                .o_grant_flat(core_grant_s), .o_src_vld(core_src_vld_s),
+                .o_dest_vld(core_dest_vld_s)
+            );
+
+            if (N <= M) begin : gen_direct
+                for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
+                    assign core_req_s[i*MC+j] = i_src_dest_req[(CMUL*i)%NC][j];
+                end
+                for (i=0;i<NC;i=i+1) begin : g_bp
+                    assign core_src_bp_s[i] = i_src_bp[(CMUL*i)%NC];
+                end
+                assign core_dest_bp_s = i_dest_bp;
+                for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
+                    assign wfa_match_s[sc*NM + ((CMUL*i)%NC)*M + j] = core_grant_s[i*MC+j];
+                end
+                for (i=0;i<NC;i=i+1) begin : g_sv
+                    assign wfa_sv_s[sc*N + ((CMUL*i)%NC)] = core_src_vld_s[i];
+                end
+                assign wfa_dv_s[sc*M +: M] = core_dest_vld_s;
+            end else begin : gen_trans
+                for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
+                    assign core_req_s[i*MC+j] = i_src_dest_req[j][(CMUL*i)%NC];
+                end
+                for (i=0;i<NC;i=i+1) begin : g_bp
+                    assign core_src_bp_s[i] = i_dest_bp[(CMUL*i)%NC];
+                end
+                assign core_dest_bp_s = i_src_bp;
+                for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
+                    assign wfa_match_s[sc*NM + j*M + ((CMUL*i)%NC)] = core_grant_s[i*MC+j];
+                end
+                for (j=0;j<MC;j=j+1) begin : g_sv
+                    assign wfa_sv_s[sc*N + j] = core_dest_vld_s[j];
+                end
+                for (i=0;i<NC;i=i+1) begin : g_dv
+                    assign wfa_dv_s[sc*M + ((CMUL*i)%NC)] = core_src_vld_s[i];
+                end
+            end
+        end
+    endgenerate
 
     wire [NM-1:0] wfa_match;
     wire [N-1:0] wfa_src_vld;
     wire [M-1:0] wfa_dest_vld;
-    generate
-        if (N <= M) begin : gen_direct
-            for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_req
-                assign core_req[i*M+j] = i_src_dest_req[i][j];
-            end
-            assign core_src_bp = i_src_bp;
-            assign core_dest_bp = i_dest_bp;
-            for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_grant
-                assign wfa_match[i*M+j] = core_grant[i*M+j];
-            end
-            assign wfa_src_vld = core_src_vld;
-            assign wfa_dest_vld = core_dest_vld;
-        end else begin : gen_trans
-            for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
-                assign core_req[i*MC+j] = i_src_dest_req[j][i];
-            end
-            assign core_src_bp = i_dest_bp;
-            assign core_dest_bp = i_src_bp;
-            for (i=0;i<N;i=i+1) for (j=0;j<M;j=j+1) begin : g_grant
-                assign wfa_match[i*M+j] = core_grant[j*MC+i];
-            end
-            for (i=0;i<N;i=i+1) begin : g_sv_map
-                assign wfa_src_vld[i] = core_dest_vld[i];
-            end
-            for (j=0;j<M;j=j+1) begin : g_dv_map
-                assign wfa_dest_vld[j] = core_src_vld[j];
+    reg [1:0] sched;
+    assign wfa_match    = wfa_match_s[sched*NM +: NM];
+    assign wfa_src_vld  = wfa_sv_s[sched*N +: N];
+    assign wfa_dest_vld = wfa_dv_s[sched*M +: M];
+
+    // Schedule counter: advance every MC grants.
+    wire any_req_w;
+    assign any_req_w = |eff_req;
+    reg [CWM:0] scnt;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            scnt  <= 0;
+            sched <= 0;
+        end else if (any_req_w) begin
+            if (scnt == MC-1) begin
+                scnt <= 0;
+                if (sched == NS-1) sched <= 0;
+                else sched <= sched + 1'b1;
+            end else begin
+                scnt <= scnt + 1'b1;
             end
         end
-    endgenerate
+    end
 
     // Effective request / row/col activity
     generate for (i=0;i<N;i=i+1) begin : g_eff_row
@@ -206,8 +281,14 @@ module fair_arbiter #(
         end
     end endgenerate
 
+    // Keep the WFA data on the fast input of the output mux: the override
+    // selects are ready early, so the WFA result only pays one select.
+    wire ov_sel_w;
+    wire [NM-1:0] ov_match;
+    assign ov_sel_w = use_src | use_dst;
+    assign ov_match = use_src ? src_ov : dst_ov;
     wire [NM-1:0] match_final;
-    assign match_final = use_src ? src_ov : (use_dst ? dst_ov : wfa_match);
+    assign match_final = ov_sel_w ? ov_match : wfa_match;
 
     localparam FUSE_VLD = ((N >= 10) || (M >= 10));
 

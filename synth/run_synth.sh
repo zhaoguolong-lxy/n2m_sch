@@ -23,12 +23,8 @@ case "$MODE" in
         MODULE=fair_arbiter_fair
         SRC="rtl/wfa_core.v rtl/fair_arbiter_fair.v"
         ;;
-    pipe)
-        MODULE=fair_arbiter_pipe
-        SRC="rtl/wfa_core_pipe.v rtl/fair_arbiter_pipe.v"
-        ;;
     *)
-        echo "usage: $0 [fast|fair|pipe]" >&2
+        echo "usage: $0 [fast|fair]" >&2
         exit 2
         ;;
 esac

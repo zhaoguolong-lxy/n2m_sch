@@ -154,7 +154,6 @@ output encoders.  Designs above 40 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| **Pipelined multi-schedule WFA (latency 1)** | **17** | **19** | **21** | **21** | out of target |
 | Multi-schedule WFA + override (fast default) | **31** | **35** | **36** | **38** | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |

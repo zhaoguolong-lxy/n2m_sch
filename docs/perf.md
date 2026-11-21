@@ -195,9 +195,8 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
    at 10x10 versus 36 for the default WFA + override (35 pure WFA).
 
-3. **Depth/area (10x10)**: 10711 cells / 35 levels for the 4-schedule default
-   (NSCHED=1: 5231 / 34; pipelined variant: 11820 / 19 at latency 1); pure WFA
-   is 2062/35, versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
+3. **Depth/area (10x10)**: 10711 cells / 35 levels for the 4-schedule default (NSCHED=1: 5274 / 35); pure WFA is 2062/35,
+   versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
    the per-source/per-destination RR selectors but runs in parallel; the WFA
    path stays critical.  The design removes
    the ITER unrolling, the augmenting swap and the serial residual fill.

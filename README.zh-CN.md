@@ -71,23 +71,6 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 RTL 检查 `tb/tb_jain.sv` 实测 NSCHED=4 为 0.914-0.933 src / 0.895-0.934 dst。
 `NSCHED` 是参数：NSCHED=1 回到最小面积，NSCHED=2 是中间点。
 
-## 流水线版本（延迟 1 拍，吞吐 1 请求/拍）
-
-`rtl/fair_arbiter_pipe.v`（配 `rtl/wfa_core_pipe.v`）端口和调度/公平性与
-`fair_arbiter` 完全一致，只是把波前从中间切成两段并打一拍寄存器。每拍可以
-接收一个新请求，输出对应上一拍的请求；`SPLIT=0` 自动选切点（8x8 切 6，
-其余切 7）。
-
-| 配置 | 单拍版 | 流水版 | 面积变化 |
-|------|--------|--------|----------|
-| 8x8 | 6655 / 31 | **6733 / 17** | +1% |
-| 10x10 | 10711 / 35 | **11820 / 19** | +10% |
-| 9x11 | 10426 / 36 | **11545 / 21** | +11% |
-| 11x9 | 10692 / 38 | **11727 / 21** | +10% |
-
-`tb/tb_pipe.sv` 把单拍版和流水版并排跑，逐拍比较所有输出位（黄金输出延迟
-一拍），并用延迟后的请求复查极大性/正交性。10x10、8x8、9x11、11x9 均 0 错误。
-
 ### 共享队列排空
 
 每个源一个多目的共享队列时，排空速度主要取决于前级暴露多少队列内容。
@@ -117,14 +100,11 @@ vvp sim/fairness_fair.vvp
 rtl/fair_arbiter.v          顶层 WFA wrapper（原始接口不变；N、M、PTR_RESET）
 rtl/wfa_core.v              内部 P 级波前核心（内部扁平接口）
 rtl/fair_arbiter_fair.v    可选 fair 版（iSLIP 首轮 + WFA fill）
-rtl/fair_arbiter_pipe.v    流水线版（延迟 1 拍，吞吐 1 请求/拍）
-rtl/wfa_core_pipe.v        流水线波前 core（中间打拍）
 rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
 tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）
 tb/tb_jain.sv               RTL 上测多源 Jain（NSCHED 1/2/4）
-tb/tb_pipe.sv               流水版 vs 单拍版逐拍等价 + 极大性
 tb/tb_fairness.sv           严格公平测试（fast 版）
 tb/tb_fairness_fair.sv      严格公平测试（fair 版）
 tb/tb_perf.sv               吞吐基准

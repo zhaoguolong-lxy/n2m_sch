@@ -83,26 +83,6 @@ The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst
 for NSCHED=4 on three persistent patterns).  `NSCHED` is a parameter:
 NSCHED=1 restores the minimal-area schedule, NSCHED=2 is the middle point.
 
-## Pipelined variant (latency 1 cycle, throughput 1 request/cycle)
-
-`rtl/fair_arbiter_pipe.v` (with `rtl/wfa_core_pipe.v`) has the same ports and
-the same schedule/fairness behaviour as `fair_arbiter`, but the wavefront is
-cut into two registered halves.  A new request can be accepted every cycle;
-the outputs correspond to the previous cycle's request.  `SPLIT=0` picks the
-auto cut (6 stages for 8x8, 7 otherwise).
-
-| Config | single-cycle | pipelined | area delta |
-|--------|--------------|-----------|------------|
-| 8x8 | 6655 / 31 | **6733 / 17** | +1% |
-| 10x10 | 10711 / 35 | **11820 / 19** | +10% |
-| 9x11 | 10426 / 36 | **11545 / 21** | +11% |
-| 11x9 | 10692 / 38 | **11727 / 21** | +10% |
-
-`tb/tb_pipe.sv` runs the single-cycle and pipelined RTL side by side and
-compares every output bit cycle by cycle (the golden outputs are registered
-once), plus maximality/orthogonality against the delayed request.  10x10,
-8x8, 9x11 and 11x9 all pass with 0 errors.
-
 ### Shared-queue drain
 
 When each source owns one multi-destination queue, the drain rate is set by
@@ -138,14 +118,11 @@ vvp sim/fairness_fair.vvp
 rtl/fair_arbiter.v      top-level WFA wrapper (exact required ports; N,M,PTR_RESET)
 rtl/wfa_core.v          internal P-stage wavefront core (flat internal interface)
 rtl/fair_arbiter_fair.v optional fair variant (iSLIP first pass + WFA fill)
-rtl/fair_arbiter_pipe.v pipelined variant (latency 1, throughput 1/cycle)
-rtl/wfa_core_pipe.v     pipelined wavefront core (registered half)
 rtl/reference/fair_arbiter_islip.v  strict-RR iSLIP+fill reference
 tb/tb_fair_arbiter.sv   main self-checking regression (17 scenarios x 22 configs)
 tb/tb_maximal.sv        maximality + orthogonality + output-consistency checker
 tb/tb_soak.sv           long randomized soak (thousands of cycles, backpressure)
 tb/tb_jain.sv           multi-source Jain index on the RTL (NSCHED 1/2/4)
-tb/tb_pipe.sv           pipelined vs single-cycle equivalence + maximality
 tb/tb_fairness.sv       strict fairness tests for the fast variant
 tb/tb_fairness_fair.sv  strict fairness tests for the fair variant
 tb/tb_perf.sv           throughput benchmark

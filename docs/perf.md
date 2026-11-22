@@ -29,14 +29,15 @@ each grant; full crossbar is 100% from the first cycle for every shape.
 | 11x9 | 9 | 0 | 9.00/9 (100%) | 8.67/9 (96%) |
 
 Fair variant (`rtl/fair_arbiter_fair.v`, iSLIP first + WFA fill): 10x10
-first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The 4-schedule fast default is
-8.87/10 (89%) at depth 35 (the single-schedule WFA measured 8.95/10; the
-difference is within run-to-run noise).
+first=10, full=100%, Bernoulli 9.03/10 (90%); depth 74.  The single-core
+default is 8.95/10 (89.5%) at depth 35; the 4-schedule option is 8.87/10
+at depth 36 (the difference is within run-to-run noise).
 
 The WFA is maximal, not maximum-cardinality: random square traffic is 86-92%
 versus 97-98% for the old iSLIP+augment.  In exchange the 10x10 depth drops from
-300 to 36 gate levels and the cell count from 11,821 to 5,200 for the default
-WFA + single-side fairness override (2,062 for the pure WFA).  The override is
+300 to 35 gate levels and the cell count from 11,821 to 5,366 for the default
+single-core WFA + override (2,062 pure WFA; the four-schedule option is
+11,255/36).  The override is
 only selected in single-source/single-destination traffic; the random/full
 crossbar numbers above are the WFA path and are unchanged.
 
@@ -193,10 +194,11 @@ keeps strict iSLIP fairness and is still maximal thanks to the fill.
 2. **WFA trades matching size for depth**: random square traffic is 81% (4x4),
    86% (8x8), 89% (10x10), 92% (16x16), and 96-100% for N!=M.  The old
    iSLIP+augment reference reaches 97-98% at 8x8/10x10, but costs 300 levels
-   at 10x10 versus 36 for the default WFA + override (35 pure WFA).
+   at 10x10 versus 35 for the default single-core WFA + override (35 pure WFA).
 
-3. **Depth/area (10x10)**: 10711 cells / 35 levels for the 4-schedule default (NSCHED=1: 5274 / 35); pure WFA is 2062/35,
-   versus 11821 cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
+3. **Depth/area (10x10)**: 5366 cells / 35 levels for the default single-core
+   (NSCHED=1); NSCHED=4 is 11255 / 36; pure WFA is 2062/35, versus 11821
+   cells / 300 levels / 80 flops for iSLIP+fill.  The override adds
    the per-source/per-destination RR selectors but runs in parallel; the WFA
    path stays critical.  The design removes
    the ITER unrolling, the augmenting swap and the serial residual fill.

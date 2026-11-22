@@ -183,8 +183,9 @@ output encoders.  Designs above 35 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| Multi-schedule WFA + override, generic Yosys (no AOI21) | 31 | 36 | 36 | 38 | out of target |
-| **Fast default + AOI21 (estimated)** | **23** | **26** | **27** | **28** | out of target |
+| Single-core WFA + override + wavefront+, generic (default) | 29 | 35 | 35 | 35 | out of target |
+| **Single-core + AOI21 (estimated, default)** | **21** | **25** | **24** | **24** | out of target |
+| 4-schedule WFA + override, generic (fairness option) | 31 | 36 | 36 | 38 | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
 | Target | <=35 | <=35 | <=35 | <=35 | out of target |
@@ -192,42 +193,45 @@ output encoders.  Designs above 35 levels are flagged for optimization.
 WFA synthesis detail (generic cells, async-reset DFF, `synth/run_synth.sh`;
 each shape runs in a fresh yosys process):
 
-Default WFA + single-side RR override:
+Default WFA (NSCHED=1) + single-side RR override + wavefront+ + AOI21
+form:
 
 | Config | cells | levels |
 |--------|-------|--------|
-| 8x8 | 6655 | 31 |
-| 10x10 | 10711 | 35 |
-| 9x11 | 10426 | 36 |
-| 11x9 | 10692 | 38 |
+| 8x8 | 3286 | 29 |
+| 10x10 | 5366 | 35 |
+| 9x11 | 5347 | 35 |
+| 11x9 | 5402 | 35 |
 
-This table is the `WAVEFRONT_PLUS=0, AOI_STYLE=0` baseline.  The current
-default (`WAVEFRONT_PLUS=1` registered presence, `AOI_STYLE=1` AOI21 form)
-is 8x8 7064/31 and 10x10 11255/36 in generic Yosys.  With the real AOI21
-library the wavefront 20 levels become 10, so the estimated depth is
-8x8 ~23 and 10x10 ~26 (well inside the 35-level closure limit).  The
-generic numbers stay above 35 at 10x10 only because generic Yosys has no
-AOI21 cell; see the wavefront+ section below.
+These are generic Yosys levels; generic Yosys has no AOI21 cell, so the
+AOI21 form still maps to gates.  With the real AOI21 library the wavefront
+is one level per stage (8/10/11/11 stages), so the logic-level estimate is
+about 21/25/24/24 for 8x8/10x10/9x11/11x9.  SKY130HD cell-level ABC for the
+single-core default: 8x8 2341 cells / 15149.53 um^2 / 4420.88 ps;
+10x10 4586 cells / 31237.46 um^2 / 5192.11 ps.  The old four-schedule
+baseline (`NSCHED=4, WAVEFRONT_PLUS=0, AOI_STYLE=0`) was 8x8 6655/31,
+10x10 10711/35, 9x11 10426/36, 11x9 10692/38; it remains available as the
+fairness-first option.
 
-Multi-schedule WFA (default): `rtl/fair_arbiter.v` runs NSCHED wavefronts in
-parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
-(pure wiring), and rotates the selected schedule every P grants.  `NSCHED` is
-a parameter (default 4).  Fairness model (10x10, 3000-cycle persistent
-patterns):
+Multi-schedule WFA (optional): `rtl/fair_arbiter.v` runs NSCHED wavefronts
+in parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
+(pure wiring), and rotates the selected schedule every P grants.  `NSCHED`
+defaults to 1 (one core); set 4 for the fairness-first mode.  Fairness
+model with wavefront+ (10x10, 3000-cycle persistent patterns):
 
 | Scheme | src Jain | dst Jain | 10x10 cells / levels |
 |--------|----------|----------|----------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| **NSCHED=4** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
-| **NSCHED=4 + wavefront+ (default)** | **0.914-0.933** | **0.895-0.934** | 11255 / 36 generic, ~26 AOI |
+| **NSCHED=1 (default)** | **0.821-0.887** | **0.805-0.871** | **5366 / 35** |
+| NSCHED=2 | 0.867-0.901 | 0.873-0.905 | 7395 / 35 |
+| NSCHED=4 (fairness) | 0.914-0.933 | 0.895-0.934 | 11255 / 36 |
 | iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
-Saturated uniform traffic (K-regular graphs): every source asks K
-destinations and every destination is asked by K sources, i.e. full load with
-perfectly balanced degrees.  `circ` is the diagonal-aligned pattern
-(source i asks i..i+K-1), `rnd` is the same graph with random row/column
-permutations.  src Jain (dst is identical for the circulant):
+Saturated uniform traffic (K-regular graphs), `WAVEFRONT_PLUS=0` baseline:
+every source asks K destinations and every destination is asked by K
+sources, i.e. full load with perfectly balanced degrees.  `circ` is the
+diagonal-aligned pattern (source i asks i..i+K-1), `rnd` is the same graph
+with random row/column permutations.  src Jain (dst is identical for the
+circulant):
 
 | K | shape | WFAx1 | WFAx2 | WFAx4 | iSLIP first + fill |
 |---|-------|-------|-------|-------|--------------------|
@@ -241,22 +245,23 @@ permutations.  src Jain (dst is identical for the circulant):
 
 The full crossbar is trivial.  The weak spot is a narrow diagonal-aligned
 pattern: with K=5 the rotating diagonal repeats the same destination for 6 of
-the 10 phases, so the single schedule gives Jain 0.5 even though every cycle
-is fully matched.  The 4-schedule version lifts that to 0.81 at 35 levels;
-per-port iSLIP reaches 0.96-1.00 but costs 74 levels.  For narrow regular
-traffic, per-port RR remains the strongest fairness mechanism.
+the 10 phases, so the single-schedule baseline gives Jain 0.5 even though
+every cycle is fully matched.  **Wavefront+ lifts the single core to
+1.000**, so the default NSCHED=1 handles this pattern; the 4-schedule
+baseline lifts it to 0.81 (0.930 with wavefront+).  Per-port iSLIP reaches
+0.96-1.00 but costs 74 levels.
 
-`tb/tb_jain.sv` measures the same effect on the RTL and reproduces the table
-exactly: random patterns 0.914-0.933 src / 0.895-0.934 dst for NSCHED=4, and
-the K-regular mode (MODE=1) gives 0.781/0.935 (K=8), 0.500/0.812 (K=5) and
-0.505/0.771 (K=3) for NSCHED=1/4.  The four wavefronts are independent and
-combinational; the cost is about 2x the cell area, 4x the matcher switching
-activity, and the 4:1 output mux (about one level at 10x10).
+`tb/tb_jain.sv` measures the same effect on the RTL: with wavefront+,
+NSCHED=1 gives random 0.821-0.887 src / 0.805-0.871 dst and NSCHED=4 gives
+0.914-0.933 / 0.895-0.934.  The K-regular mode gives NS1 1.000/1.000/1.000
+and NS4 0.943/0.930/0.899 for K=8/5/3.  NSCHED=4 costs about 2x the cell
+area, 4x the matcher switching activity, and the 4:1 output mux (about one
+level at 10x10).
 
-### One-core option (NSCHED=1)
+### Default one core (NSCHED=1)
 
-`NSCHED` is a parameter: instantiate with `.NSCHED(1)` to use a single
-wavefront core.  With the current wavefront+ + AOI21 default:
+`NSCHED` defaults to 1; `.NSCHED(4)` selects the fairness-first
+four-schedule mode.  With wavefront+ + AOI21:
 
 | NSCHED | 10x10 generic cells/levels | SKY130HD cells / area / ABC delay | random src Jain | K=5 Jain |
 |--------|----------------------------|-----------------------------------|-----------------|----------|
@@ -264,13 +269,12 @@ wavefront core.  With the current wavefront+ + AOI21 default:
 | 2 | 7395 / 35 | - | 0.867-0.901 | 0.930 |
 | 4 | 11255 / 36 | 10718 / 81874.77 um^2 / 5567.39 ps | 0.914-0.933 | 0.930 |
 
-NSCHED=1 is the only 10x10 configuration at <=35 generic levels, halves the
-area, and lowers the SKY130 ABC delay by ~7%.  The cost is random
-multi-source fairness (src Jain ~0.82-0.89 vs 0.91-0.93); narrow K-regular
-patterns are still 1.000 because wavefront+ handles them.  Strict 42/42 RR
-and 18/18 maximality are unchanged (verified with NSCHED=1).  For a
-depth/area-first build, use NSCHED=1; NSCHED=4 remains the fairness-first
-option.
+NSCHED=1 is the default.  It is the only 10x10 configuration at <=35
+generic levels, halves the area, and lowers the SKY130 ABC delay by ~7%.
+The cost is random multi-source fairness (src Jain ~0.82-0.89 vs
+0.91-0.93); narrow K-regular patterns are still 1.000 because wavefront+
+handles them.  Strict 42/42 RR and 18/18 maximality are unchanged
+(verified with NSCHED=1).  NSCHED=4 remains the fairness-first option.
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -352,14 +356,14 @@ cf_next = ~((req & rf) | ~cf)
 ```
 
 which maps to a single AOI21 cell in the real library, i.e. **one level per
-wavefront stage instead of two**.  The generic Yosys flow has no AOI21 cell
-and still reports 36 levels at 10x10 (8x8: 31), but the real library maps
-the 20 wavefront levels to 10, so the estimated 10x10 depth is **~26**
-(8x8: **~23**) with the same rotation/output logic.  This is the
-configuration that meets the <=35 closure target with margin.  Generic
-area/depth with the AOI form: 8x8 7064/31, 10x10 11255/36; `AOI_STYLE=0`
-keeps the old AND/NAND form (8x8 6916/30, 10x10 11072/36) for comparison.
-The AOI form is logically identical; 42/42 and maximality pass in both.
+wavefront stage instead of two**.  The generic Yosys flow has no AOI21 cell;
+the default single-core is 29/35 generic levels (8x8/10x10), and with the
+real AOI21 library the estimate is **~21/~25** with the same rotation/output
+logic.  This meets the <=35 closure target with margin.  Generic area/depth
+with the AOI form: 8x8 3286/29, 10x10 5366/35.  The optional four-schedule
+mode is 8x8 7064/31, 10x10 11255/36; `AOI_STYLE=0` keeps the old AND/NAND
+form (four-schedule comparison: 8x8 6916/30, 10x10 11072/36).  The AOI form
+is logically identical; 42/42 and maximality pass in both.
 
 Delta-register path optimization: `wfa_core` enables the δ register with
 `any_req = |req_pad` (an OR reduction of the effective request matrix) instead
@@ -405,13 +409,12 @@ Redundancy removal (same behaviour, fast and fair):
   encode the pointers from the final match, so the core encoders were dead
   logic that still loaded `match_accept` before ABC mapping.
 
-Net: with a single schedule the 10x10 fast wrapper drops from 5488 to 5149
-cells (-6%) at the same 35 levels, and the fair variant from 5474 to 5119
-(-6.5%).  The multi-schedule default adds the extra wavefronts on top (10711
-cells / 35 levels).  The request-mask network is still built once in the
-wrapper (`eff_req`) and once in the core: sharing it was measured, but it
-raises the `eff_req` fanout and cost two levels at 8x8, so each side keeps its
-own local mask.
+Net: the default single-schedule fast wrapper is 5366 cells / 35 levels at
+10x10; the optional four-schedule mode is 11255 / 36; the fair variant is
+5119 / 74.  The request-mask network is still built once in the wrapper
+(`eff_req`) and once in the core: sharing it was measured, but it raises
+the `eff_req` fanout and cost two levels at 8x8, so each side keeps its own
+local mask.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level
@@ -429,15 +432,17 @@ strict fairness for the single-side cases; its area is included in the default
 table above.  The override is combinational and parallel to the WFA, so it
 does not add to the matcher depth.
 
-`8x8`, `10x10`, `9x11` and `11x9` meet the <=40 target; 16x16 is outside this
-variant's target.  The cell itself is 2 gate levels (`G = R & N & W`, token
-update = AND + NAND), so depth is dominated by P.  General mixed traffic is
+`8x8`, `10x10`, `9x11` and `11x9` meet the <=35 target (generic 29/35/35/35).
+In generic gates the cell is 2 levels (`G = R & N & W`, token update =
+AND + NAND); with the real AOI21 library it is 1 level (token update =
+AOI21), so the AOI21 estimate is 21/25/24/24.  General mixed traffic is
 maximal but not maximum-cardinality; the exact mixed-traffic per-port RR order
 is relaxed.  Single-source and single-destination sequences are strict RR
 (42/42 tests).
 
 The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
-default fast variant is 5,149 / 35, and the old iSLIP+fill is 11,821 / 300.
+default single-core fast variant is 5,366 / 35; NSCHED=4 is 11,255 / 36; the
+old iSLIP+fill is 11,821 / 300.
 
 ## SKY130HD cell-level synthesis (local validation)
 
@@ -449,12 +454,21 @@ default fast variant is 5,149 / 35, and the old iSLIP+fill is 11,821 / 300.
 cell-level delay with wireload = none.  This is a local estimate, not
 placed/routed STA; use OpenSTA/OpenROAD with the real library for signoff.
 
+Default `NSCHED=1`:
+
+| Shape | cells | AOI21 cells | area (um^2) | ABC delay (ps) |
+|-------|-------|-------------|-------------|----------------|
+| 8x8 | 2341 | 182 | 15149.53 | 4420.88 |
+| 10x10 | 4586 | 328 | 31237.46 | 5192.11 |
+
+Optional `NSCHED=4` (fairness-first):
+
 | Shape | cells | AOI21 cells | area (um^2) | ABC delay (ps) |
 |-------|-------|-------------|-------------|----------------|
 | 8x8 | 5193 | 406 | 36722.72 | 4517.54 |
 | 10x10 | 10718 | 778 | 81874.77 | 5567.39 |
 
-AOI_STYLE comparison at 10x10, same flow:
+AOI_STYLE comparison at 10x10, `NSCHED=4` (same flow):
 
 | AOI_STYLE | cells | a21oi_1 | area (um^2) | delay (ps) |
 |-----------|-------|---------|-------------|------------|
@@ -472,9 +486,10 @@ the wavefront, synthesize the core alone at 10x10:
 The AOI21 form is **~2.1% faster at the core** (+0.25% area).  That is much
 less than the ideal "20 -> 10 stage levels" arithmetic: ABC already
 reassociates the old AND/NAND form into AOI21 for many stages, so both
-mappings use AOI21 cells (113 vs 132).  The remaining critical path is
-dominated by the input/output rotations, the four parallel cores and the
-output override/pointer network, not by a single wavefront stage.  The
+mappings use AOI21 cells (113 vs 132).  For the full wrapper the critical
+path also includes the input/output rotations, the output override/pointer
+network, and (for NSCHED=4) the four parallel cores, not just a single
+wavefront stage.  The
 explicit AOI21 form is still worth keeping as a guarantee for a mapper that
 does not reassociate the AND/NAND form, but do not expect it to single-
 handedly solve the 35-level target.  For a true cell-level critical path,

@@ -45,23 +45,24 @@ rotating priority, the no-waste proof, and the depth/area metric.
 - [Fair variant: iSLIP first pass + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
 Index and algorithm comparison: [diagram/circuit/README.md](diagram/circuit/README.md).
-The default RTL (`rtl/fair_arbiter.v`) is a four-schedule WFA plus the
-single-side fairness override and wavefront+; 10x10 maps to **11255 cells /
-36 generic Yosys levels**.  Generic Yosys has no AOI21 cell, so it maps the
-wavefront cell to two levels; with the real AOI21 library the 20 wavefront
-levels become 10, giving an estimated **~26 levels at 10x10** (8x8 ~23).
-The generic-only baseline without wavefront+/AOI21 is 10711 cells / 35
-levels, vs 11821 cells / 300 levels for the iSLIP+fill version.  General
-traffic is maximal but not maximum-cardinality.  Single-source and
-single-destination sequences are strict RR (42/42 tests).  With AOI21 the
-estimated depths are 23/26/27/28 for 8x8/10x10/9x11/11x9; 16x16 is outside
-this variant's target.
+The default RTL (`rtl/fair_arbiter.v`) is a **single-schedule WFA
+(`NSCHED=1`)** plus the single-side fairness override and wavefront+;
+10x10 maps to **5366 cells / 35 generic Yosys levels**.  Generic Yosys has
+no AOI21 cell, so it maps the wavefront cell to two levels; with the real
+AOI21 library the wavefront is one level per stage, giving an estimated
+**~25 levels at 10x10** (8x8 ~21).  The generic-only baseline without
+wavefront+/AOI21 (four schedules) was 10711 cells / 35 levels, vs 11821
+cells / 300 levels for the iSLIP+fill version.  General traffic is maximal
+but not maximum-cardinality.  Single-source and single-destination
+sequences are strict RR (42/42 tests).  With AOI21 the estimated depths are
+21/25/24/24 for 8x8/10x10/9x11/11x9; 16x16 is outside this variant's
+target.
 
-If 35 levels is a hard limit, use `NSCHED=1` (one wavefront core): 10x10
-**5366 cells / 35 generic levels**, 4586 cells / 31237 um^2 / 5192 ps on
-SKY130HD, vs 11255/36 and 10718/81875/5567 for the four-core default.
-Strict 42/42 RR and maximality are unchanged; random multi-source Jain
-drops from 0.914-0.933 to 0.821-0.887, while K-regular remains 1.000.
+`NSCHED=1` is the default and the only 10x10 configuration at <=35 generic
+levels; it also halves the area vs `NSCHED=4`.  The trade is random
+multi-source Jain (0.821-0.887 vs 0.914-0.933); K-regular remains 1.000.
+SKY130HD: 4586 cells / 31237 um^2 / 5192 ps at 10x10 for the default,
+vs 10718 / 81875 / 5567 for `NSCHED=4`.
 
 ## Fast vs fair variants
 
@@ -70,7 +71,8 @@ internal scheduling.
 
 | Variant | RTL | Strict single-source / single-destination | Multi-source fairness | 10x10 PPA |
 |---------|-----|-------------------------------------------|-----------------------|-----------|
-| **fast (default)** | `rtl/fair_arbiter.v` | **42/42** | 4-schedule WFA + wavefront+ (Jain 0.914-0.933 src / 0.895-0.934 dst) | **11255 cells / 36 generic; ~26 with AOI21** |
+| **fast (default, one core)** | `rtl/fair_arbiter.v` `NSCHED=1` | **42/42** | single WFA + wavefront+ (Jain 0.821-0.887 src / 0.805-0.871 dst) | **5366 cells / 35 generic; ~25 with AOI21** |
+| fast, 4-schedule (fairness) | `rtl/fair_arbiter.v` `NSCHED=4` | **42/42** | 4-schedule WFA + wavefront+ (Jain 0.914-0.933 src / 0.895-0.934 dst) | 11255 cells / 36 generic; ~26 with AOI21 |
 | **fair** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 5119 cells / 74 levels |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
@@ -83,15 +85,15 @@ This flattens the long-run grant distribution:
 
 | Scheme | src Jain (10x10) | dst Jain (10x10) | 10x10 cells / levels |
 |--------|------------------|------------------|----------------------|
-| NSCHED=1 baseline | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 baseline | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| NSCHED=4 baseline | 0.890-0.929 | 0.918-0.952 | 10711 / 35 |
-| **NSCHED=4 + wavefront+ (default)** | **0.914-0.933** | **0.895-0.934** | 11255 / 36 generic, ~26 AOI |
+| **NSCHED=1 (default)** | **0.821-0.887** | **0.805-0.871** | **5366 / 35** |
+| NSCHED=2 | 0.867-0.901 | 0.873-0.905 | 7395 / 35 |
+| NSCHED=4 (fairness) | 0.914-0.933 | 0.895-0.934 | 11255 / 36 generic, ~26 AOI |
 | fair variant | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
-The RTL checker `tb/tb_jain.sv` confirms it (0.914-0.933 src / 0.895-0.934 dst
-for NSCHED=4 on three persistent patterns).  `NSCHED` is a parameter:
-NSCHED=1 restores the minimal-area schedule, NSCHED=2 is the middle point.
+The RTL checker `tb/tb_jain.sv` confirms it: with wavefront+, NSCHED=1 is
+0.821-0.887 src / 0.805-0.871 dst and NSCHED=4 is 0.914-0.933 / 0.895-0.934
+on three persistent patterns.  `NSCHED` is a parameter (default 1):
+NSCHED=4 is the fairness-first mode, NSCHED=2 is the middle point.
 
 ### Shared-queue drain
 
@@ -109,8 +111,9 @@ Its multi-source Jain averages (10x10 model, 3000-cycle
 persistent patterns): pure WFA src 0.819-0.834 / dst 0.804-0.891; fair src
 0.866-0.895 / dst 0.912-0.934.  Full crossbar is 1.000 for both.  The fair
 variant is not a mathematical all-traffic RR guarantee (fill-only ports are
-approximate).  The 4-schedule fast default is fairer on average at less than
-half the depth; the fair variant is kept as an independent alternative.
+approximate).  The 4-schedule option is fairer on average at less than half
+the depth; the single-core default is the depth/area choice, and the fair
+variant is kept as an independent alternative.
 
 Run the fair variant:
 

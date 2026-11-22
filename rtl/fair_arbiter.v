@@ -35,7 +35,7 @@
 
 module fair_arbiter #(
     parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1,
-    parameter integer NSCHED=4, WAVEFRONT_PLUS=1, AOI_STYLE=1
+    parameter integer NSCHED=1, WAVEFRONT_PLUS=1, AOI_STYLE=1
 ) (
     input wire clk, rst_n,
     input wire [N-1:0][M-1:0] i_src_dest_req,
@@ -59,7 +59,10 @@ module fair_arbiter #(
     // ------------------------------------------------------------------
     // Multi-schedule WFA.  NSCHED wavefronts run in parallel; schedule s
     // permutes the core rows by r -> (c_s*r) mod NC (pure wiring, no mux).
-    // The schedule rotates every MC grants.  Each schedule is a different
+    // The schedule rotates every MC grants.  Default NSCHED=1 is the
+    // depth/area-first single core; set NSCHED=4 for the fairness-first
+    // four-schedule mode (about 2x area and +1 level at 10x10).  Each
+    // schedule is a different
     // diagonal-priority order, so the long-run grant distribution is much
     // flatter than a single rotating diagonal.
     // ------------------------------------------------------------------

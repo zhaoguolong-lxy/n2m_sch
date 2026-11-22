@@ -72,10 +72,9 @@ module tb_x_check;
         check($isunknown(o_grant), "T3 (no-reset) after reset: grant IS X (expected for no-reset flops)");
 
         // ---------------- T3b: after $deposit init, X-free again ----------------
+        // Default NSCHED=1: only one wavefront core exists.  For a
+        // multi-schedule x-check, add the g_sched[1..3] deposits.
         $deposit(dut_a.g_sched[0].u_core.delta, '0);
-        $deposit(dut_a.g_sched[1].u_core.delta, '0);
-        $deposit(dut_a.g_sched[2].u_core.delta, '0);
-        $deposit(dut_a.g_sched[3].u_core.delta, '0);
         $deposit(dut_a.a_ptr, '0);
         $deposit(dut_a.g_ptr, '0);
         #3;

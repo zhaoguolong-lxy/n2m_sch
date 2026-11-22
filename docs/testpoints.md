@@ -103,21 +103,23 @@ The iSLIP reference model is still checked by `scripts/verify_maximal.py`
 Both fast and fair RTL pass **42/42** strict checks.  The fair variant
 (`rtl/fair_arbiter_fair.v`) adds an iSLIP first pass before the WFA fill for
 better multi-source fairness.  The fast default adds the parallel single-side
-override plus `NSCHED=4` wavefront schedules: each schedule is a fixed coprime
-row permutation, and the selected schedule rotates every P grants.
+override on one wavefront core (`NSCHED=1`).  `NSCHED=4` is the optional
+fairness mode: four schedules, each a fixed coprime row permutation, and the
+selected schedule rotates every P grants.
 
 `tb/tb_jain.sv` measures multi-source fairness on the RTL (10x10, 3000-cycle
 persistent patterns, three seeds):
 
 | Scheme | src Jain | dst Jain |
 |--------|----------|----------|
-| NSCHED=1 | 0.821-0.887 | 0.805-0.871 |
+| **NSCHED=1 (default)** | **0.821-0.887** | **0.805-0.871** |
 | NSCHED=2 | 0.867-0.901 | 0.873-0.905 |
-| **NSCHED=4 (default)** | **0.914-0.933** | **0.895-0.934** |
+| NSCHED=4 (fairness) | 0.914-0.933 | 0.895-0.934 |
 
-The 4-schedule version beats the iSLIP-first fair variant (0.866-0.895 /
-0.912-0.934) on average, at 35 levels instead of 74; the cost is about 2x the
-cell area and 4x matcher switching.
+The single-core default meets the 35-level limit and halves the area.  The
+4-schedule option beats the iSLIP-first fair variant (0.866-0.895 /
+0.912-0.934) on average, but costs 36 levels instead of 74, about 2x the cell
+area and 4x matcher switching.
 
 Saturated uniform traffic (`MODE=1`, K-regular circulant: every source asks K
 destinations, every destination is asked by K sources; full load, perfectly

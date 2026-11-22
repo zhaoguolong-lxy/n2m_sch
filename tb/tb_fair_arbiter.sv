@@ -57,6 +57,7 @@ module tb_core #(
     parameter integer PTR_RESET = 1,
     parameter integer ITER      = 4,
     parameter integer AUGMENT   = 1,
+    parameter integer NSCHED    = 1,
     parameter string  NAME      = "8x8"
 ) ();
 
@@ -80,7 +81,7 @@ module tb_core #(
 `ifdef FAIR_DUT
     fair_arbiter_fair #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
 `else
-    fair_arbiter #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT)) dut (
+    fair_arbiter #(.N(N), .M(M), .PTR_RESET(PTR_RESET), .ITER(ITER), .AUGMENT(AUGMENT), .NSCHED(NSCHED)) dut (
 `endif
         .clk              (clk),
         .rst_n            (rst_n),
@@ -125,15 +126,37 @@ module tb_core #(
     // they are $deposit'd to 0 to simulate a deterministic power-on state and
     // avoid X in simulation.
     //-------------------------------------------------------------------------
+`ifndef FAIR_DUT
+    // PTR_RESET=0 has no reset on the core delta registers.  Deposit the
+    // deltas of the actually instantiated schedules; NSCHED=1 is the
+    // default, NSCHED=2/4 are the optional multi-schedule modes.
+    generate
+        if (NSCHED == 1) begin : g_dep
+            task automatic init_delta();
+                $deposit(dut.g_sched[0].u_core.delta, '0);
+            endtask
+        end else if (NSCHED == 2) begin : g_dep
+            task automatic init_delta();
+                $deposit(dut.g_sched[0].u_core.delta, '0);
+                $deposit(dut.g_sched[1].u_core.delta, '0);
+            endtask
+        end else begin : g_dep
+            task automatic init_delta();
+                $deposit(dut.g_sched[0].u_core.delta, '0);
+                $deposit(dut.g_sched[1].u_core.delta, '0);
+                $deposit(dut.g_sched[2].u_core.delta, '0);
+                $deposit(dut.g_sched[3].u_core.delta, '0);
+            endtask
+        end
+    endgenerate
+`endif
+
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
 `ifdef FAIR_DUT
             $deposit(dut.u_fill.delta, '0);
 `else
-            $deposit(dut.g_sched[0].u_core.delta, '0);
-            $deposit(dut.g_sched[1].u_core.delta, '0);
-            $deposit(dut.g_sched[2].u_core.delta, '0);
-            $deposit(dut.g_sched[3].u_core.delta, '0);
+            g_dep.init_delta();
 `endif
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);

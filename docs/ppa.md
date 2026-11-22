@@ -442,10 +442,21 @@ AOI_STYLE comparison at 10x10, same flow:
 | 1 (AOI21 form) | 10718 | 778 | 81874.77 | 5567.39 |
 | 0 (AND/NAND) | 10708 | 773 | 82293.93 | 5514.36 |
 
-Both styles infer AOI21 cells because ABC already reassociates the old
-AND/NAND form.  The explicit AOI21 form is therefore neutral in this
-area-oriented mapping (slightly less area, slightly more reported delay);
-its value is for a mapper/library that does not reassociate the AND/NAND
-form.  The ABC delay is dominated by the four parallel cores and the output
-network, not by a single wavefront stage.  For a true cell-level critical
-path, run OpenSTA/OpenROAD on the mapped netlist.
+At the wrapper level the difference is within ABC mapping noise.  To isolate
+the wavefront, synthesize the core alone at 10x10:
+
+| Core 10x10 AOI_STYLE | cells | a21oi_1 | area (um^2) | delay (ps) |
+|----------------------|-------|---------|-------------|------------|
+| 1 (AOI21 form) | 2011 | 132 | 17698.22 | 4348.01 |
+| 0 (AND/NAND) | 1969 | 113 | 17654.43 | 4438.99 |
+
+The AOI21 form is **~2.1% faster at the core** (+0.25% area).  That is much
+less than the ideal "20 -> 10 stage levels" arithmetic: ABC already
+reassociates the old AND/NAND form into AOI21 for many stages, so both
+mappings use AOI21 cells (113 vs 132).  The remaining critical path is
+dominated by the input/output rotations, the four parallel cores and the
+output override/pointer network, not by a single wavefront stage.  The
+explicit AOI21 form is still worth keeping as a guarantee for a mapper that
+does not reassociate the AND/NAND form, but do not expect it to single-
+handedly solve the 35-level target.  For a true cell-level critical path,
+run OpenSTA/OpenROAD on the mapped netlist.

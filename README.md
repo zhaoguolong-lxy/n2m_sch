@@ -57,6 +57,12 @@ single-destination sequences are strict RR (42/42 tests).  With AOI21 the
 estimated depths are 23/26/27/28 for 8x8/10x10/9x11/11x9; 16x16 is outside
 this variant's target.
 
+If 35 levels is a hard limit, use `NSCHED=1` (one wavefront core): 10x10
+**5366 cells / 35 generic levels**, 4586 cells / 31237 um^2 / 5192 ps on
+SKY130HD, vs 11255/36 and 10718/81875/5567 for the four-core default.
+Strict 42/42 RR and maximality are unchanged; random multi-source Jain
+drops from 0.914-0.933 to 0.821-0.887, while K-regular remains 1.000.
+
 ## Fast vs fair variants
 
 Both variants have the same required top-level interface; they differ only in

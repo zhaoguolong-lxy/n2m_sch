@@ -250,8 +250,27 @@ traffic, per-port RR remains the strongest fairness mechanism.
 exactly: random patterns 0.914-0.933 src / 0.895-0.934 dst for NSCHED=4, and
 the K-regular mode (MODE=1) gives 0.781/0.935 (K=8), 0.500/0.812 (K=5) and
 0.505/0.771 (K=3) for NSCHED=1/4.  The four wavefronts are independent and
-combinational, so the matcher depth is unchanged at 10x10; the cost is about
-2x the cell area and 4x the matcher switching activity.
+combinational; the cost is about 2x the cell area, 4x the matcher switching
+activity, and the 4:1 output mux (about one level at 10x10).
+
+### One-core option (NSCHED=1)
+
+`NSCHED` is a parameter: instantiate with `.NSCHED(1)` to use a single
+wavefront core.  With the current wavefront+ + AOI21 default:
+
+| NSCHED | 10x10 generic cells/levels | SKY130HD cells / area / ABC delay | random src Jain | K=5 Jain |
+|--------|----------------------------|-----------------------------------|-----------------|----------|
+| **1** | **5366 / 35** | **4586 / 31237.46 um^2 / 5192.11 ps** | 0.821-0.887 | **1.000** |
+| 2 | 7395 / 35 | - | 0.867-0.901 | 0.930 |
+| 4 | 11255 / 36 | 10718 / 81874.77 um^2 / 5567.39 ps | 0.914-0.933 | 0.930 |
+
+NSCHED=1 is the only 10x10 configuration at <=35 generic levels, halves the
+area, and lowers the SKY130 ABC delay by ~7%.  The cost is random
+multi-source fairness (src Jain ~0.82-0.89 vs 0.91-0.93); narrow K-regular
+patterns are still 1.000 because wavefront+ handles them.  Strict 42/42 RR
+and 18/18 maximality are unchanged (verified with NSCHED=1).  For a
+depth/area-first build, use NSCHED=1; NSCHED=4 remains the fairness-first
+option.
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel

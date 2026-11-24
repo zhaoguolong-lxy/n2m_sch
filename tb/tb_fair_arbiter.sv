@@ -134,11 +134,21 @@ module tb_core #(
 `ifdef FAIR_DUT
             $deposit(dut.u_fill.delta, '0);
 `else
+`ifdef SCHED4_DUT
+            $deposit(dut.u_dut.delta, '0);
+            $deposit(dut.u_dut.delta_oh, {{(PMAX-1){1'b0}}, 1'b1});
+`else
             $deposit(dut.delta, '0);
             $deposit(dut.delta_oh, {{(PMAX-1){1'b0}}, 1'b1});
 `endif
+`endif
+`ifdef SCHED4_DUT
+            $deposit(dut.u_dut.a_ptr, '0);
+            $deposit(dut.u_dut.g_ptr, '0);
+`else
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);
+`endif
         end
     endtask
 

@@ -45,6 +45,8 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。默认 RTL
 （`rtl/fair_arbiter.v`）是 **replicate/bank 波前 + 单侧公平覆盖**：P 个固定 δ 波前核并行，对角线旋转是综合期布线（0 级），一个寄存器 one-hot `delta_oh` 选择 bank。10x10 综合为 **12661 cells / 30 级**（8x8：6386 / 26）；SKY130HD 为 **7108 cells / 39794 um² / 3877 ps**（8x8：3424 / 20453 / 3634 ps）。旧旋转 WFA 为 5366 / 35（SKY130 5192 ps），旧 iSLIP+fill 为 11821 / 300。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（24/24）。
 
+可选的 **4 调度公平顶层**（`rtl/fair_arbiter_sched4.v`，模块 `fair_arbiter_sched4`）保持相同接口，在一个 bank 上时分复用 4 组固定调度置换，并用寄存器化的“度数均匀”检测在 K-regular 流量下回到单波前+ 调度。随机 10x10 Jain 为 **0.914-0.933 src / 0.895-0.934 dst**，K-regular **1.000**；**12129 cells / 28 级（AOI 能力映射）**，旧 NAND/NOR-only 映射为 15199 cells / 40 级；SKY130HD **9040 cells / 53953 um² / 4522 ps**。它是公平优先模式，不是默认深度优先顶层。完整对比见 `docs/optimization.md`。
+
 ## fast / fair 两个版本
 
 两个版本的顶层接口完全一致，只是内部调度不同。
@@ -54,6 +56,7 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 | **fast（默认，bank）** | `rtl/fair_arbiter.v` | **24/24** | bank WFA（Jain 0.821-0.887 src / 0.805-0.871 dst） | **12661 cells / 30 级；SKY130 7108 / 39794um² / 3877ps** |
 | 旧旋转 WFA，4 调度 | `rtl/reference/fair_arbiter_rot.v` `NSCHED=4` | **42/42（历史）** | 4 调度 WFA（Jain 0.914-0.933 src / 0.895-0.934 dst） | 11255 cells / 36 级 |
 | **fair（可选）** | `rtl/fair_arbiter_fair.v` | **24/24** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 5119 cells / 74 级 |
+| **公平顶层（可选）** | `rtl/fair_arbiter_sched4.v` | **24/24** | 4 调度 + 自适应门控（Jain 0.914-0.933 src / 0.895-0.934 dst，K-reg 1.000） | 12129 / 28 级（AOI 映射；旧映射 15199 / 40 级）；SKY 9040 / 53953 / 4522 ps |
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
 
 ### 多调度公平（旧旋转参考）
@@ -101,6 +104,7 @@ vvp sim/fairness_fair.vvp
 
 ```
 rtl/fair_arbiter.v          默认 bank 顶层（原始接口不变；N、M、PTR_RESET）
+rtl/fair_arbiter_sched4.v   可选 4 调度公平顶层（相同接口）
 rtl/wfa_core_fixed.v        固定 δ 的 P 级波前核（bank 使用）
 rtl/wfa_core.v              旋转 δ 的 P 级波前核（旧参考）
 rtl/reference/fair_arbiter_rot.v  旧旋转多调度顶层（NSCHED=1..4）
@@ -117,6 +121,7 @@ tb/tb_perf.sv               吞吐基准
 tb/tb_x_check.sv            复位 / X 态检查
 scripts/verify_wfa.py       WFA 算法级穷举极大性 / 正交性验证
 scripts/fairness_compare.py  多源 Jain 模型：WFAx1/x2/x4 vs fair
+scripts/fairness_explore.py  bank 选择策略 / 调度置换公平性模型
 scripts/queue_drain.py      共享队列排空模型（窗口扫描）
 scripts/verify_maximal.py   旧 iSLIP+fill 参考实现的同类验证
 diagram/circuit/            WFA 电路级 PNG 方案图（总 / 分）
@@ -165,6 +170,15 @@ iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core_fixed.v 
 vvp sim/fairness.vvp
 ```
 
+可选 4 调度公平顶层（编译 wrapper 替代默认顶层）：
+
+```bash
+iverilog -g2012 -s tb_jain_top -o sim/jain4.vvp \
+    rtl/wfa_core_fixed.v rtl/fair_arbiter_sched4.v \
+    tb/fair_arbiter_sched4_wrap.v tb/tb_jain.sv
+vvp sim/jain4.vvp
+```
+
 全套验证（主回归 + 极大性 + soak + 公平 + X + 性能 + 穷举）：
 
 ```bash
@@ -183,6 +197,11 @@ python scripts/verify_wfa.py
 bash synth/run_synth.sh        # 默认 bank：逐形状面积/深度
 bash synth/run_synth.sh fair   # 可选 fair 变体
 bash synth/run_synth.sh sky130 # SKY130HD 单元级/ABC 延迟
+
+# 可选 4 调度公平顶层，AOI 能力通用映射
+FAIR_SCHED=4 MAP=cmos bash synth/run_synth.sh fast
+# 可选 4 调度公平顶层，SKY130HD
+FAIR_SCHED=4 bash synth/run_synth.sh sky130
 ```
 
 ## 参数

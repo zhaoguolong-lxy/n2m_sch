@@ -7,6 +7,10 @@
 #   fair   - iSLIP first pass + WFA fill variant, generic mapping
 #   sky130 - default bank top, SKY130HD cell mapping + ABC timing
 #
+# Environment:
+#   FAIR_SCHED=4  use the optional 4-schedule fairness top (fast/sky130)
+#   MAP=cmos      generic mapping with AOI/OAI/MUX gates (fast)
+#
 # Each shape runs in a fresh yosys process.  yosys' internal auto-index
 # counter keeps growing across `design -reset`, which perturbs ABC's mapping
 # and nudges the reported depth by +-1 level; fresh processes keep the
@@ -19,16 +23,26 @@ cd "$ROOT"
 MODE="${1:-fast}"
 case "$MODE" in
     fast)
-        MODULE=fair_arbiter
-        SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
+        if [ "${FAIR_SCHED:-1}" = "4" ]; then
+            MODULE=fair_arbiter_sched4
+            SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter_sched4.v"
+        else
+            MODULE=fair_arbiter
+            SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
+        fi
         ;;
     fair)
         MODULE=fair_arbiter_fair
         SRC="rtl/wfa_core.v rtl/fair_arbiter_fair.v"
         ;;
     sky130)
-        MODULE=fair_arbiter
-        SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
+        if [ "${FAIR_SCHED:-1}" = "4" ]; then
+            MODULE=fair_arbiter_sched4
+            SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter_sched4.v"
+        else
+            MODULE=fair_arbiter
+            SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
+        fi
         ;;
     *)
         echo "usage: $0 [fast|fair|sky130]" >&2
@@ -63,6 +77,11 @@ for shape in ${GEN_SHAPES:-8x8 10x10}; do
     n="${shape%x*}"
     m="${shape#*x}"
     echo "=== $MODE $shape ==="
-    yosys -p "read_verilog -sv $SRC; chparam -set N $n -set M $m $MODULE; synth -top $MODULE; flatten; stat; ltp -noff" 2>&1 \
-        | grep -E "^ +[0-9]+ +cells$|Longest topological path"
+    if [ "${MAP:-default}" = "cmos" ]; then
+        yosys -p "read_verilog -sv $SRC; chparam -set N $n -set M $m $MODULE; synth -top $MODULE; flatten; abc -g cmos; opt_clean; stat; ltp -noff" 2>&1 \
+            | grep -E "^ +[0-9]+ +cells$|Longest topological path"
+    else
+        yosys -p "read_verilog -sv $SRC; chparam -set N $n -set M $m $MODULE; synth -top $MODULE; flatten; stat; ltp -noff" 2>&1 \
+            | grep -E "^ +[0-9]+ +cells$|Longest topological path"
+    fi
 done

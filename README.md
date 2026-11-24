@@ -67,6 +67,17 @@ Random multi-source Jain of the default is 0.821-0.887 src / 0.805-0.871 dst;
 K-regular remains 1.000.  SKY130HD: 7108 cells / 39794 um^2 / 3877 ps at
 10x10 (8x8: 3424 / 20453 / 3634 ps).
 
+An optional **4-schedule fairness top** (`rtl/fair_arbiter_sched4.v`, module
+`fair_arbiter_sched4`) keeps the same interface and time-multiplexes four
+fixed schedule permutations on one bank.  A registered uniform-degree
+detector keeps the single wavefront+ schedule for K-regular traffic.  It
+gives random 10x10 Jain **0.914-0.933 src / 0.895-0.934 dst** and K-regular
+**1.000**, at **12129 cells / 28 levels with the AOI-capable cmos mapping**
+(15199 / 40 under the old NAND/NOR-only mapping) and SKY130HD **9040 cells /
+53953 um^2 / 4522 ps**.
+It is a fairness mode, not the depth-first default.  Full comparison:
+`docs/optimization.md`.
+
 ## Fast vs fair variants
 
 Both variants have the same required top-level interface; they differ only in
@@ -77,6 +88,7 @@ internal scheduling.
 | **fast (default, bank)** | `rtl/fair_arbiter.v` | **24/24** | bank WFA + wavefront+ (Jain 0.821-0.887 src / 0.805-0.871 dst) | **12661 cells / 30 generic; 7108 / 39794um2 / 3877ps SKY130** |
 | legacy rotating, 4-schedule | `rtl/reference/fair_arbiter_rot.v` `NSCHED=4` | **42/42 (historical)** | 4-schedule WFA + wavefront+ (Jain 0.914-0.933 src / 0.895-0.934 dst) | 11255 cells / 36 generic |
 | **fair** | `rtl/fair_arbiter_fair.v` | **24/24** | iSLIP first pass + WFA fill (Jain 0.87-0.90 src / 0.91-0.93 dst) | 5119 cells / 74 levels |
+| **fairness top (optional)** | `rtl/fair_arbiter_sched4.v` | **24/24** | 4 schedules + adaptive gate (Jain 0.914-0.933 src / 0.895-0.934 dst, K-reg 1.000) | 12129 / 28 cmos (15199 / 40 old map); SKY 9040 / 53953 / 4522 ps |
 | strict reference | `rtl/reference/fair_arbiter_islip.v` | strict all traffic | strict iSLIP+serial fill | 11821 / 300 |
 
 ### Multi-schedule fairness (legacy rotating reference)
@@ -133,6 +145,7 @@ vvp sim/fairness_fair.vvp
 
 ```
 rtl/fair_arbiter.v      default bank top (exact required ports; N,M,PTR_RESET)
+rtl/fair_arbiter_sched4.v optional 4-schedule fairness top (same interface)
 rtl/wfa_core_fixed.v    constant-delta P-stage wavefront core (bank)
 rtl/wfa_core.v          rotating P-stage wavefront core (legacy reference)
 rtl/fair_arbiter_fair.v optional fair variant (iSLIP first pass + WFA fill)
@@ -152,6 +165,7 @@ tb/tb_perf.sv           throughput benchmark
 tb/tb_x_check.sv        reset / X-state checks
 scripts/verify_wfa.py     exhaustive WFA maximality / orthogonality check
 scripts/fairness_compare.py  multi-source Jain model: WFAx1/x2/x4, wavefront+
+scripts/fairness_explore.py  bank selection-policy / schedule fairness model
 scripts/queue_drain.py      shared-queue drain model (window sweep)
 scripts/verify_maximal.py  same check for the old iSLIP+fill reference
 sim/run_sim.sh          compile + run wrapper (optional)
@@ -204,6 +218,16 @@ iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core_fixed.v 
 vvp sim/fairness.vvp
 ```
 
+Optional 4-schedule fairness top (compile the wrapper instead of the default
+top):
+
+```
+iverilog -g2012 -s tb_jain_top -o sim/jain4.vvp \
+    rtl/wfa_core_fixed.v rtl/fair_arbiter_sched4.v \
+    tb/fair_arbiter_sched4_wrap.v tb/tb_jain.sv
+vvp sim/jain4.vvp
+```
+
 Everything (main + maximality + soak + fairness + X + throughput + exhaustive check):
 
 ```
@@ -223,6 +247,11 @@ python scripts/verify_wfa.py
 bash synth/run_synth.sh         # fast: area/depth per shape
 bash synth/run_synth.sh fair    # optional fair variant
 bash synth/run_synth.sh sky130  # SKY130HD: cells, AOI21 count, ABC delay
+
+# optional 4-schedule fairness top, AOI-capable generic mapping
+FAIR_SCHED=4 MAP=cmos bash synth/run_synth.sh fast
+# optional 4-schedule fairness top, SKY130HD
+FAIR_SCHED=4 bash synth/run_synth.sh sky130
 ```
 
 ## Parameters

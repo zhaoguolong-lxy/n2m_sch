@@ -188,6 +188,15 @@ rather than a strict ascending order, which is the documented WFA tradeoff.
 | Fair-variant soak (3 configurations x 1500) | **PASS** | 0 violations |
 | Fair-variant 10x10 x 20,000 soak | **PASS** | 146,049 grants, 0 violations |
 
+Optional 4-schedule fairness top (`rtl/fair_arbiter_sched4.v`, compiled
+instead of the default top): main regression **192,860 checks, 0 errors**;
+maximality **11/11** (0 non-max / 0 wasted); strict RR **24/24**; reset / X
+checks 0 errors; 3-shape soak + 10x10 x 20,000 soak (**144,651 grants**)
+0 violations.  RTL Jain: random 10x10 src 0.914-0.933 / dst 0.895-0.934,
+K-regular 1.000.  10x10 PPA: 12,129 cells / 28 levels with the AOI-capable
+`abc -g cmos` mapping (40 with the NAND/NOR-only mapping), SKY130HD 9,040
+cells / 53,953 um2 / 4,522 ps.
+
 Multi-source fairness model (`scripts/fairness_compare.py`, 10x10, 3000-cycle
 persistent patterns):
 

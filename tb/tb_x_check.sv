@@ -73,10 +73,17 @@ module tb_x_check;
 
         // ---------------- T3b: after $deposit init, X-free again ----------------
         // Bank schedule state: binary delta plus the registered one-hot select.
+`ifdef SCHED4_DUT
+        $deposit(dut_a.u_dut.delta, '0);
+        $deposit(dut_a.u_dut.delta_oh, {{(N-1){1'b0}}, 1'b1});
+        $deposit(dut_a.u_dut.a_ptr, '0);
+        $deposit(dut_a.u_dut.g_ptr, '0);
+`else
         $deposit(dut_a.delta, '0);
         $deposit(dut_a.delta_oh, {{(N-1){1'b0}}, 1'b1});
         $deposit(dut_a.a_ptr, '0);
         $deposit(dut_a.g_ptr, '0);
+`endif
         #3;
         check(!$isunknown(o_grant), "T3b after $deposit init: grant X-free");
         check(!$isunknown(o_src_ptr) || !o_src_vld, "T3b after $deposit init: src_ptr X-free when vld");

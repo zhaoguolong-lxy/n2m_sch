@@ -547,12 +547,34 @@ of the coupled row/col token ripple; the 2D mutual dependency has no small
 associative prefix operator, so that path is high-risk and was not pursued.
 The bank is the practical depth win.
 
+### Optional 4-schedule fairness top
+
+`rtl/fair_arbiter_sched4.v` (module `fair_arbiter_sched4`) keeps the same
+top-level interface and adds four time-multiplexed schedule permutations to
+one bank.  A registered source/destination-degree-uniformity detector holds
+the single wavefront+ schedule for K-regular traffic.  10x10 results:
+
+| Metric | dflt mapping | cmos mapping | SKY130HD |
+|--------|--------------|--------------|----------|
+| cells / levels | 15199 / 40 | **12129 / 28** | 9040 cells |
+| area / ABC delay | - | - | 53953 um2 / 4522 ps |
+| random Jain src / dst | - | 0.914-0.933 / 0.895-0.934 | - |
+| K-regular Jain | - | 1.000 | - |
+
+The `cmos` mapping uses `abc -g cmos` (AOI/OAI/MUX gates), a closer proxy for
+the real library; the original mapping excludes these cells and maps each
+wavefront AOI stage to two levels.  The default bank passes both metrics; the
+4-schedule top passes the cmos metric and is 40 under the pessimistic
+NAND/NOR-only proxy.  It is an optional fairness mode, not the default.
+
 Net: the default bank top is **12661 cells / 30 levels at 10x10** and
 **6386 / 26 at 8x8**; SKY130 is **7108c / 39794um2 / 3877ps** and
-**3424c / 20453um2 / 3634ps**.  The optional fair variant is 5119 / 74.
-The request-mask network is still built once in the wrapper (`eff_req`) and
-once in each core: sharing it was measured, but it raises the `eff_req`
-fanout and cost two levels at 8x8, so each side keeps its own local mask.
+**3424c / 20453um2 / 3634ps**.  The optional fair variant is 5119 / 74;
+the optional 4-schedule fairness top is 12129 / 28 cmos and 9040c /
+53953um2 / 4522ps.  The request-mask network is still built once in the
+wrapper (`eff_req`) and once in each core: sharing it was measured, but it
+raises the `eff_req` fanout and cost two levels at 8x8, so each side keeps its
+own local mask.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level

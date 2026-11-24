@@ -409,6 +409,52 @@ Redundancy removal (same behaviour, fast and fair):
   encode the pointers from the final match, so the core encoders were dead
   logic that still loaded `match_accept` before ABC mapping.
 
+### Output one-hot -> binary pointer audit
+
+The 10x10 generic critical path ends at `o_grant_dest_ptr`, so the output
+encoder is the last stage on the path.  Current implementation:
+
+```
+terms[j] = match_final[i*M+j] & bit_b(j)
+ptr[b]   = |terms[j]
+```
+
+This is an independent OR tree per binary bit.  Depth is
+`ceil(log2 N/M) + 1` (about 4 levels at 10x10), which is the asymptotic
+minimum for producing a binary index from a one-hot vector.
+
+Alternatives checked:
+
+- **Pre-mux encoders + final pointer mux** (`PTR_FAST` experiment):
+  WFA/override pointers are encoded before `match_final`, then selected.
+  Measured 10x10 **5754 cells / 36 levels** vs the current **5383 / 35** in
+  the same run (the default table is 5366 / 35; the difference is ABC
+  mapping noise).  The extra pointer mux and duplicated WFA encoders
+  outweigh the removed match-mux level.  Rejected.
+- **Priority encoder**: same `log` depth, more area than the independent
+  OR trees (the one-hot input already selects one term per bit).  No win.
+- **Thermometer/prefix encoder**: about `2*log` depth (prefix OR + XOR),
+  worse.  No win.
+- **One-hot pointer output**: would remove the encoder and about 4 levels,
+  but changes the required binary interface.  Not applicable.
+
+Stage audit at 10x10 (default single core, generic levels):
+
+| Stage | Current | Depth | Alternative | Verdict |
+|-------|---------|-------|-------------|---------|
+| request mask | AND with backpressure | 2 | 3-input AND / merge into rotator | library-dependent; sharing the mask was slower |
+| input rotation | log-stage 2:1 barrel | 4 | radix-4 barrel | library-dependent (4:1 cell); generic same |
+| wavefront | P stages, AOI21 form | 20 generic / 10 AOI | replicate / MARX | library-dependent; Becker's replicate is fastest in ASIC |
+| inverse rotation | log-stage 2:1 barrel | 4 | radix-4 barrel | library-dependent |
+| match mux | 2:1 WFA/override | 1 | fused AOI mux | same |
+| one-hot -> bin | OR tree | 4 | pre-mux / priority / thermometer | current best measured |
+| vld | fused per path | ~1 | plain post-mux OR | current best |
+
+The pointer encoder is therefore near-optimal for the required binary
+interface; the remaining 4 levels are inherent.  The only real ways to
+remove them are a wider-OR/priority-encoder cell in the target library or a
+one-hot output contract.
+
 Net: the default single-schedule fast wrapper is 5366 cells / 35 levels at
 10x10; the optional four-schedule mode is 11255 / 36; the fair variant is
 5119 / 74.  The request-mask network is still built once in the wrapper

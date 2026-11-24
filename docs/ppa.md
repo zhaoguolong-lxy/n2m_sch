@@ -517,8 +517,9 @@ Takeaways:
 
 - **10x10 generic depth 35 -> 30** (5 levels of margin under the 35 limit);
   SKY130 delay **5192 -> 3877 ps (-25%)**.  8x8: 29 -> 26, -18% delay.
-- Cost is **~1.27-1.35x area** (ABC shares logic across the P cores, so it is
-  far below the naive P-times blowup).  Depth-first, this is a good trade.
+- Cost is **~1.9-2.4x generic cells / ~1.27-1.35x SKY130 area** (ABC shares
+  logic across the P cores, so it is far below the naive P-times blowup).
+  Depth-first, this is a good trade.
 - The earlier "bank is generic-neutral (35 vs 35)" dismissal was measured on
   the OLD 2-gate wavefront without the AOI form / output fusion; with AOI21
   and the full top the bank clearly wins.  Generic hides the AOI benefit.

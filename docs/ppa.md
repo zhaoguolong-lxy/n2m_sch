@@ -1,9 +1,12 @@
 # Fair Arbiter - Synthesis & PPA
 
-> **Default RTL is now the Wavefront (WFA/WWFA) implementation** in
-> `rtl/fair_arbiter.v` (section 8).  Sections 1-7 describe the earlier
+> **Default RTL is now the replicate/bank Wavefront implementation** in
+> `rtl/fair_arbiter.v` (section 8).  It runs P fixed-delta WFA cores in
+> parallel and selects one with a registered one-hot bank select; there is no
+> runtime input/output barrel rotator.  Sections 1-7 describe the earlier
 > iSLIP + residual-fill reference (`rtl/reference/fair_arbiter_islip.v`) and are
-> kept for comparison.
+> kept for comparison.  The old rotating WFA top is kept as
+> `rtl/reference/fair_arbiter_rot.v`.
 
 Synthesizer: Yosys 0.66 (`synth -top fair_arbiter`), generic gate library
 (no standard-cell liberty file, so "area" = count of gate-level cells after
@@ -183,47 +186,45 @@ output encoders.  Designs above 35 levels are flagged for optimization.
 | Design | 8x8 | 10x10 | 9x11 | 11x9 | 16x16 |
 |--------|-----|-------|------|------|-------|
 | iSLIP + serial fill (old) | 129 (ITER=1) | 300 (ITER=4/AUG=1) | - | - | 372 (ITER=1) |
-| Single-core WFA + override + wavefront+, generic (default) | 29 | 35 | 35 | 35 | out of target |
-| **Single-core + AOI21 (estimated, default)** | **21** | **25** | **24** | **24** | out of target |
-| 4-schedule WFA + override, generic (fairness option) | 31 | 36 | 36 | 38 | out of target |
+| **Bank WFA + override + wavefront+, generic (default)** | **26** | **30** | - | - | out of scope |
+| Single-core rotating WFA + override (legacy default) | 29 | 35 | 35 | 35 | out of target |
+| 4-schedule rotating WFA + override (legacy option) | 31 | 36 | 36 | 38 | out of target |
 | Fair variant: iSLIP first + WFA fill | 60 | 74 | 74 | 76 | out of target |
 | Pure WFA (low-depth reference) | **28** | **35** | **35** | **35** | 48 |
-| Target | <=35 | <=35 | <=35 | <=35 | out of target |
+| Target | <=35 | <=35 | <=35 | <=35 | out of scope |
 
 WFA synthesis detail (generic cells, async-reset DFF, `synth/run_synth.sh`;
-each shape runs in a fresh yosys process):
+each shape runs in a fresh Yosys process):
 
-Default WFA (NSCHED=1) + single-side RR override + wavefront+ + AOI21
-form:
+Default bank + single-side RR override + wavefront+ + AOI21 form:
 
-| Config | cells | levels |
-|--------|-------|--------|
-| 8x8 | 3286 | 29 |
-| 10x10 | 5366 | 35 |
-| 9x11 | 5347 | 35 |
-| 11x9 | 5402 | 35 |
+| Config | cells | levels | SKY130HD cells / area / ABC delay |
+|--------|-------|--------|-----------------------------------|
+| 8x8 | 6386 | 26 | 3424 / 20453.37 um^2 / 3634.04 ps |
+| 10x10 | 12661 | 30 | 7108 / 39794.41 um^2 / 3876.72 ps |
 
 These are generic Yosys levels; generic Yosys has no AOI21 cell, so the
 AOI21 form still maps to gates.  With the real AOI21 library the wavefront
-is one level per stage (8/10/11/11 stages), so the logic-level estimate is
-about 21/25/24/24 for 8x8/10x10/9x11/11x9.  SKY130HD cell-level ABC for the
-single-core default: 8x8 2341 cells / 15149.53 um^2 / 4420.88 ps;
-10x10 4586 cells / 31237.46 um^2 / 5192.11 ps.  The old four-schedule
-baseline (`NSCHED=4, WAVEFRONT_PLUS=0, AOI_STYLE=0`) was 8x8 6655/31,
-10x10 10711/35, 9x11 10426/36, 11x9 10692/38; it remains available as the
-fairness-first option.
+is one level per stage, so the core depth estimate is lower; the local
+SKY130HD ABC delay above is the library-level validation.  For reference,
+the legacy single-core rotating default was 8x8 3286/29 (SKY130 2341 cells /
+15149.53 um^2 / 4420.88 ps) and 10x10 5366/35 (4586 cells / 31237.46 um^2 /
+5192.11 ps).  The old four-schedule baseline (`NSCHED=4,
+WAVEFRONT_PLUS=0, AOI_STYLE=0`) was 8x8 6655/31, 10x10 10711/35,
+9x11 10426/36, 11x9 10692/38; it remains available in
+`rtl/reference/fair_arbiter_rot.v` as the fairness-first option.
 
-Multi-schedule WFA (optional): `rtl/fair_arbiter.v` runs NSCHED wavefronts
-in parallel, each with a fixed coprime row permutation `r -> (c*r) mod N`
-(pure wiring), and rotates the selected schedule every P grants.  `NSCHED`
-defaults to 1 (one core); set 4 for the fairness-first mode.  Fairness
-model with wavefront+ (10x10, 3000-cycle persistent patterns):
+Multi-schedule WFA (legacy rotating reference): `rtl/reference/fair_arbiter_rot.v`
+runs NSCHED wavefronts in parallel, each with a fixed coprime row permutation
+`r -> (c*r) mod N` (pure wiring), and rotates the selected schedule every P
+grants.  The default bank top is single-schedule and ignores `NSCHED`.
+Fairness model with wavefront+ (10x10, 3000-cycle persistent patterns):
 
 | Scheme | src Jain | dst Jain | 10x10 cells / levels |
 |--------|----------|----------|----------------------|
-| **NSCHED=1 (default)** | **0.821-0.887** | **0.805-0.871** | **5366 / 35** |
-| NSCHED=2 | 0.867-0.901 | 0.873-0.905 | 7395 / 35 |
-| NSCHED=4 (fairness) | 0.914-0.933 | 0.895-0.934 | 11255 / 36 |
+| **Bank default** | **0.821-0.887** | **0.805-0.871** | **12661 / 30** |
+| rotating NSCHED=2 (legacy) | 0.867-0.901 | 0.873-0.905 | 7395 / 35 |
+| rotating NSCHED=4 (legacy) | 0.914-0.933 | 0.895-0.934 | 11255 / 36 |
 | iSLIP first + fill (fair) | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
 Saturated uniform traffic (K-regular graphs), `WAVEFRONT_PLUS=0` baseline:
@@ -246,22 +247,24 @@ circulant):
 The full crossbar is trivial.  The weak spot is a narrow diagonal-aligned
 pattern: with K=5 the rotating diagonal repeats the same destination for 6 of
 the 10 phases, so the single-schedule baseline gives Jain 0.5 even though
-every cycle is fully matched.  **Wavefront+ lifts the single core to
-1.000**, so the default NSCHED=1 handles this pattern; the 4-schedule
+every cycle is fully matched.  **Wavefront+ lifts the single schedule to
+1.000**, so the default bank handles this pattern; the legacy 4-schedule
 baseline lifts it to 0.81 (0.930 with wavefront+).  Per-port iSLIP reaches
 0.96-1.00 but costs 74 levels.
 
-`tb/tb_jain.sv` measures the same effect on the RTL: with wavefront+,
-NSCHED=1 gives random 0.821-0.887 src / 0.805-0.871 dst and NSCHED=4 gives
-0.914-0.933 / 0.895-0.934.  The K-regular mode gives NS1 1.000/1.000/1.000
-and NS4 0.943/0.930/0.899 for K=8/5/3.  NSCHED=4 costs about 2x the cell
-area, 4x the matcher switching activity, and the 4:1 output mux (about one
-level at 10x10).
+`tb/tb_jain.sv` measures the same effect on the RTL: the default bank gives
+random 0.821-0.887 src / 0.805-0.871 dst.  The earlier rotating model gave
+NSCHED=4 0.914-0.933 / 0.895-0.934.  The K-regular mode gives the bank
+1.000/1.000/1.000 and the legacy NS4 0.943/0.930/0.899 for K=8/5/3.
+The legacy four-schedule option costs about 2x the cell area, 4x the matcher
+switching activity, and the 4:1 output mux (about one level at 10x10).
 
-### Default one core (NSCHED=1)
+### Legacy rotating single core (reference)
 
-`NSCHED` defaults to 1; `.NSCHED(4)` selects the fairness-first
-four-schedule mode.  With wavefront+ + AOI21:
+The table below is the pre-bank rotating top, kept in
+`rtl/reference/fair_arbiter_rot.v` for the multi-schedule comparison.  The
+default bank top is **12661 / 30** at 10x10 and ignores `NSCHED`.
+With wavefront+ + AOI21:
 
 | NSCHED | 10x10 generic cells/levels | SKY130HD cells / area / ABC delay | random src Jain | K=5 Jain |
 |--------|----------------------------|-----------------------------------|-----------------|----------|
@@ -269,12 +272,12 @@ four-schedule mode.  With wavefront+ + AOI21:
 | 2 | 7395 / 35 | - | 0.867-0.901 | 0.930 |
 | 4 | 11255 / 36 | 10718 / 81874.77 um^2 / 5567.39 ps | 0.914-0.933 | 0.930 |
 
-NSCHED=1 is the default.  It is the only 10x10 configuration at <=35
-generic levels, halves the area, and lowers the SKY130 ABC delay by ~7%.
-The cost is random multi-source fairness (src Jain ~0.82-0.89 vs
-0.91-0.93); narrow K-regular patterns are still 1.000 because wavefront+
-handles them.  Strict 42/42 RR and 18/18 maximality are unchanged
-(verified with NSCHED=1).  NSCHED=4 remains the fairness-first option.
+In the legacy top, NSCHED=1 was the depth/area choice and 4 was the
+fairness-first option.  The bank default has the same single-schedule
+fairness (src Jain ~0.82-0.89); narrow K-regular patterns are 1.000 because
+wavefront+ handles them.  The bank was verified with the current 24/24
+strict-RR and 11-configuration maximality tests; the historical rotating runs
+used the older 42/42 and 18-configuration suites.
 
 Pure WFA reference (no override): 8x8 1181/28, 10x10 2062/35,
 9x11 2029/35, 11x9 2029/35, 16x16 5261/48.  The override runs in parallel
@@ -290,8 +293,8 @@ WTF-style prototype (`rtl/fair_arbiter_wtf.v`, comparison only): iSLIP
 first pass + row-serial waterfall fill.  The default `SIMPLE_FILL=1`
 makes the fill a fixed-order lowest-index greedy (the first pass already
 owns the per-port RR, so the fill only has to guarantee maximality):
-8x8 2007/58, 10x10 3387/70.  It passes all 42 strict RR checks, all 18
-maximality shapes (0 non-max cycles), K-regular Jain 1.000, random 10x10
+8x8 2007/58, 10x10 3387/70.  It passed the historical 42 strict RR checks and 18
+maximality configurations (0 non-max cycles), K-regular Jain 1.000, random 10x10
 0.876-0.920 src / 0.870-0.950 dst.  The original per-row `a_ptr` fill
 (`SIMPLE_FILL=0`) is 8x8 3094/122, 10x10 6802/186; removing the per-row
 pointer and rotating start halves both depth and area.
@@ -300,13 +303,13 @@ With `FILL=0` (first pass only) it is 1467/27 (8x8) and 2564/32 (10x10),
 but 394/476 non-maximal cycles, so the fill is mandatory.  With
 `FIRST_PASS=0, SIMPLE_FILL=1` (greedy base only) it is 552/31 and 880/38.
 Adding the parallel per-port override to that greedy base gives
-`rtl/fair_arbiter_greedy.v`: 8x8 1976/34, 10x10 3630/39, 42/42 and
-maximal, but multi-source Jain collapses to 0.125-0.333 (the fixed-order
+`rtl/fair_arbiter_greedy.v`: 8x8 1976/34, 10x10 3630/39, strict RR
+(historical 42/42) and maximal, but multi-source Jain collapses to 0.125-0.333 (the fixed-order
 greedy keeps serving the same low-index pairs).  This shows the iSLIP
 first pass is what makes the WTF-style fair; the optimized 70-level
 version is the smallest fair+maximal variant found.  It is still 2x the
-35-level WFA, so the WFA remains the default.  This prototype does not
-reproduce the paper's cell-level waterfall; see
+30-level bank (or 35-level rotating WFA), so the bank remains the default.
+This prototype does not reproduce the paper's cell-level waterfall; see
 `docs/literature.md` section 4.2.
 
 Reproduce the WTF prototype checks:
@@ -344,9 +347,10 @@ RTL results (registered presence):
 | K=5 | 0.500 | **1.000** | 0.812 | **0.930** |
 | K=3 | 0.505 | **1.000** | 0.771 | **0.899** |
 
-Random 10x10 also improves slightly at NSCHED=4 (0.890-0.929 ->
-0.914-0.933 src).  Strict RR remains 42/42 and maximality remains 0 non-max
-on all 18 shapes; the main WFA and fair-variant regressions pass.
+Random 10x10 also improves slightly at NSCHED=4 in the legacy rotating top
+(0.890-0.929 -> 0.914-0.933 src).  The default bank and fair-variant
+regressions pass; the bank itself is verified with 24/24 strict RR and 11
+maximality configurations (0 non-max cycles).
 
 **AOI21 form (default `AOI_STYLE=1`)**: the free-token update is written as
 
@@ -357,13 +361,16 @@ cf_next = ~((req & rf) | ~cf)
 
 which maps to a single AOI21 cell in the real library, i.e. **one level per
 wavefront stage instead of two**.  The generic Yosys flow has no AOI21 cell;
-the default single-core is 29/35 generic levels (8x8/10x10), and with the
-real AOI21 library the estimate is **~21/~25** with the same rotation/output
-logic.  This meets the <=35 closure target with margin.  Generic area/depth
-with the AOI form: 8x8 3286/29, 10x10 5366/35.  The optional four-schedule
-mode is 8x8 7064/31, 10x10 11255/36; `AOI_STYLE=0` keeps the old AND/NAND
-form (four-schedule comparison: 8x8 6916/30, 10x10 11072/36).  The AOI form
-is logically identical; 42/42 and maximality pass in both.
+the legacy rotating single core was 29/35 generic levels (8x8/10x10), and the
+default bank is 26/30.  With the real AOI21 library each wavefront stage is
+one level, so the core depth estimate is lower; the local SKY130HD ABC delay
+is the library-level validation.  This meets the <=35 closure target with
+margin.  Legacy rotating generic area/depth with the AOI form: 8x8 3286/29,
+10x10 5366/35; the default bank is 6386/26 and 12661/30.  The optional
+four-schedule legacy mode is 8x8 7064/31, 10x10 11255/36; `AOI_STYLE=0` keeps
+the old AND/NAND form (four-schedule comparison: 8x8 6916/30, 10x10
+11072/36).  The AOI form is logically identical; strict-RR and maximality
+checks pass in the current bank and fair-variant regressions.
 
 Delta-register path optimization: `wfa_core` enables the δ register with
 `any_req = |req_pad` (an OR reduction of the effective request matrix) instead
@@ -428,7 +435,7 @@ Alternatives checked:
 - **Pre-mux encoders + final pointer mux** (`PTR_FAST` experiment):
   WFA/override pointers are encoded before `match_final`, then selected.
   Measured 10x10 **5754 cells / 36 levels** vs the current **5383 / 35** in
-  the same run (the default table is 5366 / 35; the difference is ABC
+  the same legacy run (the pre-bank table was 5366 / 35; the difference is ABC
   mapping noise).  The extra pointer mux and duplicated WFA encoders
   outweigh the removed match-mux level.  Rejected.
 - **Priority encoder**: same `log` depth, more area than the independent
@@ -481,41 +488,57 @@ it requires wrap-around (STA loop risk), replication/unrolling (area), or
 accepting the deeper `2P-1` classic WFA.  The prototype is kept as a
 negative-result reference; it is not integrated into `fair_arbiter`.
 
-### Replicate/bank arbiter (positive result — depth-first alternative)
+### Replicate/bank arbiter (default — depth-first)
 
-`rtl/reference/fair_arbiter_bank.v` (+ `wfa_core_fixed.v`) is a complete,
-verified alternative with the same top-level interface.  Instead of one core
-with a runtime barrel rotator, it instantiates **P fixed-delta cores** (the
-input/output rotation is compile-time wiring, 0 levels) and selects one with
-a rotating `delta` register through a P:1 mux.  The 8-level input+output
-rotation collapses to a single ~4-level select mux.  Wavefront+ delta-skip is
-applied to the bank select (registered, off the critical path), so fairness
-matches the single-core rotating default.
+`rtl/fair_arbiter.v` is a replicate/bank design: it instantiates **P fixed-
+delta cores** (`rtl/wfa_core_fixed.v`) in parallel.  Each core's input/output
+diagonal rotation is compile-time wiring (0 levels), so the 8-level runtime
+input+output barrel rotator disappears.  A registered one-hot bank select
+(`delta_oh`) drives a flat AND-OR mux.  `delta_oh` intentionally captures the
+current `delta` one cycle late, so the select output path does not include the
+wavefront+ next-state priority logic.
 
-Verified: strict RR **42/42**, maximality **18/18 shapes (0 non-max)**,
-K-regular Jain **1.000**, random 10x10 src 0.823 (same as NS1 rotating).
+`delta` rotates once per granted cycle; the optional wavefront+ skip is still
+computed on the registered next-state path.  For the square case the presence
+vector uses `eff_req`, so backpressure is included.  `NSCHED` is accepted for
+source compatibility but ignored: the bank is single-schedule.  The old
+rotating `NSCHED=1..4` top is kept as `rtl/reference/fair_arbiter_rot.v`.
+
+Verified: strict RR **24/24** (default fairness TB, 4 shapes), maximality
+**11 shapes (max 10x10, 0 non-max)**,
+K-regular Jain **1.000**, random 10x10 src **0.823** (same as NS1 rotating).
 
 | Shape | rotating NS1 generic | bank generic | rotating SKY130 | bank SKY130 |
 |-------|----------------------|--------------|-----------------|-------------|
-| 8x8   | 3286 / 29 | 6681 / **27** | 2341c / 15149um2 / 4421ps | 3539c / 21049um2 / **3954ps** |
-| 10x10 | 5366 / 35 | 12875 / **31** | 4586c / 31237um2 / 5192ps | 7610c / 42885um2 / **4006ps** |
-| 9x11  | 5347 / 35 | 13084 / **34** | - | 7757c / 45995um2 / 3788ps |
-| 11x9  | 5402 / 35 | 13317 / 36 | - | 7702c / 44743um2 / 4041ps |
+| 8x8   | 3286 / 29 | **6386 / 26** | 2341c / 15149um2 / 4421ps | 3424c / 20453um2 / **3634ps** |
+| 10x10 | 5366 / 35 | **12661 / 30** | 4586c / 31237um2 / 5192ps | 7108c / 39794um2 / **3877ps** |
 
 Takeaways:
 
-- **10x10 generic depth 35 -> 31** (4 levels of margin under the 35 limit);
-  SKY130 delay **5192 -> 4006 ps (-23%)**.  8x8: 29 -> 27, -11% delay.
-- Cost is **~1.4-1.5x area** (ABC shares logic across the P cores, so it is
+- **10x10 generic depth 35 -> 30** (5 levels of margin under the 35 limit);
+  SKY130 delay **5192 -> 3877 ps (-25%)**.  8x8: 29 -> 26, -18% delay.
+- Cost is **~1.27-1.35x area** (ABC shares logic across the P cores, so it is
   far below the naive P-times blowup).  Depth-first, this is a good trade.
 - The earlier "bank is generic-neutral (35 vs 35)" dismissal was measured on
   the OLD 2-gate wavefront without the AOI form / output fusion; with AOI21
   and the full top the bank clearly wins.  Generic hides the AOI benefit.
-- 11x9 generic is 36 (no-AOI proxy); with the real AOI library it is well
-  under 35 like the other shapes.
+- 9x11 / 11x9 are not in the default max-10x10 regression; the earlier bank
+  experiment measured 9x11 = 34 and 11x9 = 36 generic levels (the 11x9 value
+  is a no-AOI proxy and is expected to close with the AOI21 library).
 
-Reproduce: `bash synth/run_synth.sh bank` (generic) and
-`SKY130_SHAPES=10x10 bash synth/run_synth.sh bank130` (cell-level).
+Reproduce: `bash synth/run_synth.sh` (generic, 8x8/10x10) and
+`bash synth/run_synth.sh sky130` (cell-level).
+
+Bank stage audit at 10x10 (generic levels):
+
+| Stage | Depth |
+|-------|-------|
+| request mask | 2 |
+| wavefront (P fixed-delta stages, AOI21 form) | 20 generic / 10 AOI |
+| bank select (registered one-hot AND-OR) | ~2 |
+| match mux (WFA/override) | 1 |
+| one-hot -> binary pointer | 4 |
+| vld | ~1 |
 
 The remaining depth is the P-stage wavefront itself (20 generic / 10 AOI).
 Cutting that further needs a parallel-prefix / carry-lookahead reformulation
@@ -523,40 +546,42 @@ of the coupled row/col token ripple; the 2D mutual dependency has no small
 associative prefix operator, so that path is high-risk and was not pursued.
 The bank is the practical depth win.
 
-Net: the default single-schedule fast wrapper is 5366 cells / 35 levels at
-10x10; the optional four-schedule mode is 11255 / 36; the fair variant is
-5119 / 74.  The request-mask network is still built once in the wrapper
-(`eff_req`) and once in the core: sharing it was measured, but it raises
-the `eff_req` fanout and cost two levels at 8x8, so each side keeps its own
-local mask.
+Net: the default bank top is **12661 cells / 30 levels at 10x10** and
+**6386 / 26 at 8x8**; SKY130 is **7108c / 39794um2 / 3877ps** and
+**3424c / 20453um2 / 3634ps**.  The optional fair variant is 5119 / 74.
+The request-mask network is still built once in the wrapper (`eff_req`) and
+once in each core: sharing it was measured, but it raises the `eff_req`
+fanout and cost two levels at 8x8, so each side keeps its own local mask.
 
 Generic-gate mapping is sensitive to statement order and ABC heuristics: the
 same logic can move by +-1 level between builds, so treat single-level
 differences as noise.
 
-The WFA numbers are for the wrapper `rtl/fair_arbiter.v` + core `rtl/wfa_core.v`
-(P = max(N,M) torus diagonals, P stages, rotating start).  The current RTL uses
-a log-depth cyclic rotator for delta and an N>M transpose wrapper (pure wiring),
-so 11x9 reuses the 9x11 core.  Cell/depth numbers come from
-`bash synth/run_synth.sh [fast|fair]`, which runs each shape in a fresh yosys
-process: repeating `design -reset` inside one process perturbs ABC's mapping
-and moves the reported depth by +-1 level.  A parallel single-source/single-destination RR
-override (a_ptr/g_ptr + one RR selector per source and per destination) gives
-strict fairness for the single-side cases; its area is included in the default
-table above.  The override is combinational and parallel to the WFA, so it
-does not add to the matcher depth.
+The bank numbers are for `rtl/fair_arbiter.v` + `rtl/wfa_core_fixed.v`
+(P fixed cores; the N>M transpose and all diagonal rotations are pure wiring).
+The old rotating WFA (`rtl/reference/fair_arbiter_rot.v` + `rtl/wfa_core.v`)
+is kept for the NSCHED fairness comparison and for the pre-bank PPA history.
+Cell/depth numbers come from `bash synth/run_synth.sh`, which runs each shape
+in a fresh yosys process: repeating `design -reset` inside one process
+perturbs ABC's mapping and moves the reported depth by +-1 level.  A parallel
+single-source/single-destination RR override (a_ptr/g_ptr + one RR selector per
+source and per destination) gives strict fairness for the single-side cases;
+its area is included in the default table above.  The override is combinational
+and parallel to the bank, so it does not add to the matcher depth.
 
-`8x8`, `10x10`, `9x11` and `11x9` meet the <=35 target (generic 29/35/35/35).
-In generic gates the cell is 2 levels (`G = R & N & W`, token update =
-AND + NAND); with the real AOI21 library it is 1 level (token update =
-AOI21), so the AOI21 estimate is 21/25/24/24.  General mixed traffic is
-maximal but not maximum-cardinality; the exact mixed-traffic per-port RR order
-is relaxed.  Single-source and single-destination sequences are strict RR
-(42/42 tests).
+The default bank meets the <=35 target: **8x8 = 26, 10x10 = 30 generic
+levels**.  In the same earlier bank experiment 9x11/11x9 measured 34/36
+generic levels (not part of the default max-10x10 regression; 11x9 is the
+no-AOI proxy and is expected to close with the AOI21 library).  In generic
+gates the wavefront cell is 2 levels (`G = R & N & W`, token update =
+AND + NAND); with the real AOI21 library it is 1 level per stage.  General
+mixed traffic is maximal but not maximum-cardinality; the exact mixed-traffic
+per-port RR order is relaxed.  Single-source and single-destination sequences
+are strict RR (24/24 default-bank and fair-variant tests).
 
-The pure WFA (without the override) at 10x10 is 2,062 cells / 35 levels; the
-default single-core fast variant is 5,366 / 35; NSCHED=4 is 11,255 / 36; the
-old iSLIP+fill is 11,821 / 300.
+Historical comparison at 10x10: pure WFA 2,062 / 35, rotating NSCHED=1
+5,366 / 35, rotating NSCHED=4 11,255 / 36, old iSLIP+fill 11,821 / 300,
+default bank 12,661 / 30.
 
 ## SKY130HD cell-level synthesis (local validation)
 

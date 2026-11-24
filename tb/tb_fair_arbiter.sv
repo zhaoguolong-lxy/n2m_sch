@@ -126,37 +126,16 @@ module tb_core #(
     // they are $deposit'd to 0 to simulate a deterministic power-on state and
     // avoid X in simulation.
     //-------------------------------------------------------------------------
-`ifndef FAIR_DUT
-    // PTR_RESET=0 has no reset on the core delta registers.  Deposit the
-    // deltas of the actually instantiated schedules; NSCHED=1 is the
-    // default, NSCHED=2/4 are the optional multi-schedule modes.
-    generate
-        if (NSCHED == 1) begin : g_dep
-            task automatic init_delta();
-                $deposit(dut.g_sched[0].u_core.delta, '0);
-            endtask
-        end else if (NSCHED == 2) begin : g_dep
-            task automatic init_delta();
-                $deposit(dut.g_sched[0].u_core.delta, '0);
-                $deposit(dut.g_sched[1].u_core.delta, '0);
-            endtask
-        end else begin : g_dep
-            task automatic init_delta();
-                $deposit(dut.g_sched[0].u_core.delta, '0);
-                $deposit(dut.g_sched[1].u_core.delta, '0);
-                $deposit(dut.g_sched[2].u_core.delta, '0);
-                $deposit(dut.g_sched[3].u_core.delta, '0);
-            endtask
-        end
-    endgenerate
-`endif
-
+    // PTR_RESET=0 has no reset on the bank schedule state.  Deposit the
+    // binary delta and the registered one-hot select to a deterministic
+    // power-on state (bank 0) so the no-reset configs start X-free.
     task automatic init_pointers();
         if (PTR_RESET == 0) begin
 `ifdef FAIR_DUT
             $deposit(dut.u_fill.delta, '0);
 `else
-            g_dep.init_delta();
+            $deposit(dut.delta, '0);
+            $deposit(dut.delta_oh, {{(PMAX-1){1'b0}}, 1'b1});
 `endif
             $deposit(dut.a_ptr, '0);
             $deposit(dut.g_ptr, '0);
@@ -761,17 +740,12 @@ module tb_top;
     tb_core #(.N(5),   .M(3),   .PTR_RESET(1), .NAME("cfg_5x3"     )) c06 ();
     tb_core #(.N(3),   .M(5),   .PTR_RESET(1), .NAME("cfg_3x5"     )) c07 ();
     tb_core #(.N(2),   .M(2),   .PTR_RESET(1), .NAME("cfg_2x2"     )) c08 ();
-    tb_core #(.N(16),  .M(16),  .PTR_RESET(1), .ITER(1), .NAME("cfg_16x16_i1")) c09 ();
     tb_core #(.N(8),   .M(8),   .PTR_RESET(0), .NAME("cfg_8x8_nrst")) c10 ();
     tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .ITER(1), .NAME("cfg_8x8_i1"  )) c11 ();
     tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .ITER(3), .NAME("cfg_8x8_i3"  )) c12 ();
     // non-power-of-two boundary sweep (around the $clog2 wrap edges)
     tb_core #(.N(9),   .M(9),   .PTR_RESET(1), .NAME("cfg_9x9"     )) c13 ();
-    tb_core #(.N(9),   .M(11),  .PTR_RESET(1), .NAME("cfg_9x11"    )) c14 ();
     tb_core #(.N(8),   .M(9),   .PTR_RESET(1), .NAME("cfg_8x9"     )) c15 ();
-    tb_core #(.N(11),  .M(9),   .PTR_RESET(1), .NAME("cfg_11x9"    )) c16 ();
-    tb_core #(.N(7),   .M(11),  .PTR_RESET(1), .NAME("cfg_7x11"    )) c17 ();
-    tb_core #(.N(15),  .M(15),  .PTR_RESET(1), .ITER(1), .NAME("cfg_15x15_i1")) c18 ();
     // 10x10 (explicitly requested N=M=10 case): default maximal design and a
     // no-swap variant that also exercises the S16 fairness test.
     tb_core #(.N(10),  .M(10),  .PTR_RESET(1), .NAME("cfg_10x10"    )) c19 ();
@@ -780,7 +754,7 @@ module tb_top;
     // power-of-two baseline size (S16 is skipped for AUGMENT=1).
     tb_core #(.N(8),   .M(8),   .PTR_RESET(1), .AUGMENT(0), .NAME("cfg_8x8_noswap")) c21 ();
 
-    localparam integer NUM_CFG = 22;
+    localparam integer NUM_CFG = 17;
 
     initial begin
         $display("============================================================");

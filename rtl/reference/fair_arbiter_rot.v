@@ -1,16 +1,46 @@
 //=============================================================================
-// fair_arbiter_bank.v - SPIKE: replicate/bank arbiter (full top interface).
+// fair_arbiter_rot.v - legacy rotating multi-schedule arbiter (reference).
 //
-// P fixed-delta wavefront cores (rotation = wiring) run in parallel; a
-// rotating delta register selects one core via a P:1 mux.  Removes the runtime
-// input/output barrel rotators.  Same override + pointer output as
-// fair_arbiter.  Wavefront+ delta-skip is applied to the bank select for the
-// square case (registered, off the critical path).  Throwaway reference.
+// NOT the default top.  The default rtl/fair_arbiter.v is the replicate/bank
+// implementation (lower depth).  This file is kept for the NSCHED=1..2..4
+// fairness comparison and for reproducing the pre-bank PPA numbers; the
+// wrapper interface is identical to fair_arbiter.
+//
+// TOP-LEVEL INTERFACE (exactly the required signals; DO NOT RENAME/CHANGE):
+//   input  clk
+//   input  rst_n
+//   input  [N-1:0][M-1:0]        i_src_dest_req
+//   input  [N-1:0]               i_src_bp
+//   input  [M-1:0]               i_dest_bp
+//   output [N-1:0][M-1:0]        o_grant_rand_vld
+//   output [N-1:0]               o_grant_src_vld
+//   output [N-1:0][clog2(M)-1:0] o_grant_src_ptr
+//   output [M-1:0]               o_grant_dest_vld
+//   output [M-1:0][clog2(N)-1:0] o_grant_dest_ptr
+//
+// Design:
+//   - General traffic: WFA/WWFA core (rtl/wfa_core.v), maximal/no-waste.
+//   - Single-source case (only one source has effective requests): a per-source
+//     RR override selects the first requested destination at/after a_ptr and
+//     grants exactly that pair.  The source sequence is strict RR.
+//   - Single-destination case (only one destination has effective requests):
+//     a per-destination RR override selects the first requested source at/after
+//     g_ptr and grants exactly that pair.  The destination sequence is strict RR.
+//   - The override runs in parallel with the WFA and is selected by
+//     use_src/use_dst; the WFA path remains the critical path.
+//   - a_ptr/g_ptr advance only on an override grant; during mixed traffic they
+//     hold.  This keeps the single-side fairness state stable and avoids adding
+//     a long feedback path through the WFA.
+//
+// Area/depth target: 10x10 is the design point; 8x8..11x9 are supported.
+// 16x16 is not a target for this variant.
 //=============================================================================
+
 `default_nettype none
-module fair_arbiter_bank #(
+
+module fair_arbiter_rot #(
     parameter integer N=8, M=8, PTR_RESET=1, ITER=4, AUGMENT=1,
-    parameter integer WAVEFRONT_PLUS=1, AOI_STYLE=1
+    parameter integer NSCHED=1, WAVEFRONT_PLUS=1, AOI_STYLE=1
 ) (
     input wire clk, rst_n,
     input wire [N-1:0][M-1:0] i_src_dest_req,
@@ -24,57 +54,104 @@ module fair_arbiter_bank #(
 );
     localparam integer CWN=$clog2(N), CWM=$clog2(M), NM=N*M;
     localparam integer NC=(N<M)?N:M, MC=(N>M)?N:M;
-    localparam integer P=MC, CWP=$clog2(P);
-    genvar i,j,b,k;
+    genvar i,j,b,sc;
 
+    // Masked request matrix for the single-side override.  The WFA core builds
+    // its own copy from the raw request and backpressure; sharing one matrix
+    // raises the fanout and is slower at small shapes.
     wire [NM-1:0] eff_req;
 
-    wire [P*NM-1:0] wfa_match_s;
-    wire [P*N-1:0]  wfa_sv_s;
-    wire [P*M-1:0]  wfa_dv_s;
+    // ------------------------------------------------------------------
+    // Multi-schedule WFA.  NSCHED wavefronts run in parallel; schedule s
+    // permutes the core rows by r -> (c_s*r) mod NC (pure wiring, no mux).
+    // The schedule rotates every MC grants.  Default NSCHED=1 is the
+    // depth/area-first single core; set NSCHED=4 for the fairness-first
+    // four-schedule mode (about 2x area and +1 level at 10x10).  Each
+    // schedule is a different
+    // diagonal-priority order, so the long-run grant distribution is much
+    // flatter than a single rotating diagonal.
+    // ------------------------------------------------------------------
+    localparam integer NS = (NSCHED < 1) ? 1 : (NSCHED > 4 ? 4 : NSCHED);
+
+    // The schedule multiplier must be coprime to NC, otherwise the row
+    // permutation would repeat/skip rows.  Evaluate the table at elaboration.
+    function automatic integer gcd_i;
+        input integer a, b;
+        integer x, y, t;
+        begin
+            x = a; y = b;
+            while (y != 0) begin t = x % y; x = y; y = t; end
+            gcd_i = x;
+        end
+    endfunction
+
+    function automatic integer perm_mul;
+        input integer sl;
+        input integer n;
+        integer c, sel, mul, found;
+        begin
+            sel = sl; mul = 1; found = 0;
+            for (c = 1; c < n && !found; c = c + 1) begin
+                if (gcd_i(c, n) == 1) begin
+                    if (sel == 0) begin mul = c; found = 1; end
+                    else sel = sel - 1;
+                end
+            end
+            perm_mul = mul;
+        end
+    endfunction
+
+    wire [NS*NM-1:0] wfa_match_s;
+    wire [NS*N-1:0]  wfa_sv_s;
+    wire [NS*M-1:0]  wfa_dv_s;
+
     generate
-        for (k=0;k<P;k=k+1) begin : g_bank
+        for (sc=0; sc<NS; sc=sc+1) begin : g_sched
+            localparam integer CMUL = perm_mul(sc, NC);
             wire [NC*MC-1:0] core_req_s, core_grant_s;
             wire [NC-1:0] core_src_bp_s, core_src_vld_s;
             wire [MC-1:0] core_dest_bp_s, core_dest_vld_s;
-            wfa_core_fixed #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET),
-                             .DELTA_VAL(k),.AOI_STYLE(AOI_STYLE)) u_core (
+
+            wfa_core #(.N(NC),.M(MC),.PTR_RESET(PTR_RESET),
+                       .WAVEFRONT_PLUS(WAVEFRONT_PLUS),
+                       .AOI_STYLE(AOI_STYLE)) u_core (
                 .clk(clk), .rst_n(rst_n), .i_req_flat(core_req_s),
                 .i_src_bp(core_src_bp_s), .i_dest_bp(core_dest_bp_s),
                 .o_grant_flat(core_grant_s), .o_src_vld(core_src_vld_s),
                 .o_dest_vld(core_dest_vld_s)
             );
+
             if (N <= M) begin : gen_direct
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
-                    assign core_req_s[i*MC+j] = i_src_dest_req[i][j];
+                    assign core_req_s[i*MC+j] = i_src_dest_req[(CMUL*i)%NC][j];
                 end
                 for (i=0;i<NC;i=i+1) begin : g_bp
-                    assign core_src_bp_s[i] = i_src_bp[i];
+                    assign core_src_bp_s[i] = i_src_bp[(CMUL*i)%NC];
                 end
                 assign core_dest_bp_s = i_dest_bp;
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
-                    assign wfa_match_s[k*NM + i*M + j] = core_grant_s[i*MC+j];
+                    assign wfa_match_s[sc*NM + ((CMUL*i)%NC)*M + j] = core_grant_s[i*MC+j];
                 end
                 for (i=0;i<NC;i=i+1) begin : g_sv
-                    assign wfa_sv_s[k*N + i] = core_src_vld_s[i];
+                    assign wfa_sv_s[sc*N + ((CMUL*i)%NC)] = core_src_vld_s[i];
                 end
-                assign wfa_dv_s[k*M +: M] = core_dest_vld_s;
+                assign wfa_dv_s[sc*M +: M] = core_dest_vld_s;
             end else begin : gen_trans
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_req
-                    assign core_req_s[i*MC+j] = i_src_dest_req[j][i];
+                    assign core_req_s[i*MC+j] = i_src_dest_req[j][(CMUL*i)%NC];
                 end
                 for (i=0;i<NC;i=i+1) begin : g_bp
-                    assign core_src_bp_s[i] = i_dest_bp[i];
+                    assign core_src_bp_s[i] = i_dest_bp[(CMUL*i)%NC];
                 end
                 assign core_dest_bp_s = i_src_bp;
                 for (i=0;i<NC;i=i+1) for (j=0;j<MC;j=j+1) begin : g_grant
-                    assign wfa_match_s[k*NM + j*M + i] = core_grant_s[i*MC+j];
+                    assign wfa_match_s[sc*NM + j*M + ((CMUL*i)%NC)] = core_grant_s[i*MC+j];
                 end
                 for (j=0;j<MC;j=j+1) begin : g_sv
-                    assign wfa_sv_s[k*N + j] = core_dest_vld_s[j];
+                    assign wfa_sv_s[sc*N + j] = core_dest_vld_s[j];
                 end
                 for (i=0;i<NC;i=i+1) begin : g_dv
-                    assign wfa_dv_s[k*M + i] = core_src_vld_s[i];
+                    assign wfa_dv_s[sc*M + ((CMUL*i)%NC)] = core_src_vld_s[i];
                 end
             end
         end
@@ -83,54 +160,31 @@ module fair_arbiter_bank #(
     wire [NM-1:0] wfa_match;
     wire [N-1:0] wfa_src_vld;
     wire [M-1:0] wfa_dest_vld;
-    reg [CWP-1:0] delta;
-    assign wfa_match    = wfa_match_s[delta*NM +: NM];
-    assign wfa_src_vld  = wfa_sv_s[delta*N +: N];
-    assign wfa_dest_vld = wfa_dv_s[delta*M +: M];
+    reg [1:0] sched;
+    assign wfa_match    = wfa_match_s[sched*NM +: NM];
+    assign wfa_src_vld  = wfa_sv_s[sched*N +: N];
+    assign wfa_dest_vld = wfa_dv_s[sched*M +: M];
 
-    wire any_req_w = |eff_req;
-
-    // Wavefront+ bank select (square only): skip to the diagonal after the
-    // first diagonal that has any request.  Registered, off the critical path.
-    wire [P-1:0] diag_pres;
-    generate
-        if (N == M) begin : g_pres_sq
-            for (k=0;k<P;k=k+1) begin : g_pk
-                wire [N-1:0] terms;
-                for (i=0;i<N;i=i+1)
-                    assign terms[i] = eff_req[i*M + ((i+k)%N)];
-                assign diag_pres[k] = |terms;
-            end
-        end else begin : g_pres_ns
-            assign diag_pres = {P{1'b1}};
-        end
-    endgenerate
-
-    function automatic [CWP-1:0] next_delta;
-        input [CWP-1:0] cur;
-        integer off, kk; reg [CWP-1:0] r; reg found;
-        begin
-            r = (cur==P-1) ? {CWP{1'b0}} : cur+1'b1;
-            if (WAVEFRONT_PLUS && (N==M)) begin
-                found = 0;
-                for (off=0; off<P; off=off+1) begin
-                    kk = (cur+off)%P;
-                    if (!found && diag_pres[kk]) begin
-                        r = ((kk+1)%P);
-                        found = 1;
-                    end
-                end
-            end
-            next_delta = r;
-        end
-    endfunction
-
+    // Schedule counter: advance every MC grants.
+    wire any_req_w;
+    assign any_req_w = |eff_req;
+    reg [CWM:0] scnt;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) delta <= 0;
-        else if (any_req_w) delta <= next_delta(delta);
+        if (!rst_n) begin
+            scnt  <= 0;
+            sched <= 0;
+        end else if (any_req_w) begin
+            if (scnt == MC-1) begin
+                scnt <= 0;
+                if (sched == NS-1) sched <= 0;
+                else sched <= sched + 1'b1;
+            end else begin
+                scnt <= scnt + 1'b1;
+            end
+        end
     end
 
-    // ---- override + outputs (identical to fair_arbiter) ----
+    // Effective request / row/col activity
     generate for (i=0;i<N;i=i+1) begin : g_eff_row
         for (j=0;j<M;j=j+1) begin : g_eff_bit
             assign eff_req[i*M+j] = i_src_dest_req[i][j] & rst_n
@@ -155,17 +209,18 @@ module fair_arbiter_bank #(
     wire use_dst = (~src_onehot) && dst_onehot;
 
     function automatic [CWN-1:0] idx_n;
-        input [N-1:0] oh; integer t; reg [CWN-1:0] v;
-        begin v=0; for (t=0;t<N;t=t+1) if (oh[t]) v=t; idx_n=v; end
+        input [N-1:0] oh; integer k; reg [CWN-1:0] v;
+        begin v=0; for (k=0;k<N;k=k+1) if (oh[k]) v=k; idx_n=v; end
     endfunction
     function automatic [CWM-1:0] idx_m;
-        input [M-1:0] oh; integer t; reg [CWM-1:0] v;
-        begin v=0; for (t=0;t<M;t=t+1) if (oh[t]) v=t; idx_m=v; end
+        input [M-1:0] oh; integer k; reg [CWM-1:0] v;
+        begin v=0; for (k=0;k<M;k=k+1) if (oh[k]) v=k; idx_m=v; end
     endfunction
 
     reg [N*CWM-1:0] a_ptr;
     reg [M*CWN-1:0] g_ptr;
 
+    // source single-active override: one RR selector per source, no index mux
     wire [NM-1:0] src_ov;
     generate for (i=0;i<N;i=i+1) begin : g_sov_row
         wire [M-1:0] row_req_i, s_mask_i, s_hi_i, s_lo_i, s_pick_i;
@@ -178,6 +233,8 @@ module fair_arbiter_bank #(
         assign s_pick_i = (|s_hi_i) ? (s_hi_i & ~(s_hi_i - 1'b1))
                                     : (s_lo_i & ~(s_lo_i - 1'b1));
         for (j=0;j<M;j=j+1) begin : g_sov_out
+            // s_pick_i is zero when the row has no request, so the row-any
+            // AND is redundant.
             assign src_ov[i*M+j] = s_pick_i[j];
         end
         wire [CWM-1:0] ix_s = idx_m(s_pick_i);
@@ -199,6 +256,7 @@ module fair_arbiter_bank #(
         end
     end endgenerate
 
+    // destination single-active override: one RR selector per destination
     wire [NM-1:0] dst_ov;
     generate for (j=0;j<M;j=j+1) begin : g_dov_col
         wire [N-1:0] col_req_j, d_mask_j, d_hi_j, d_lo_j, d_pick_j;
@@ -211,6 +269,7 @@ module fair_arbiter_bank #(
         assign d_pick_j = (|d_hi_j) ? (d_hi_j & ~(d_hi_j - 1'b1))
                                     : (d_lo_j & ~(d_lo_j - 1'b1));
         for (i=0;i<N;i=i+1) begin : g_dov_out
+            // d_pick_j is zero when the column has no request.
             assign dst_ov[i*M+j] = d_pick_j[i];
         end
         wire [CWN-1:0] ix_d = idx_n(d_pick_j);
@@ -232,11 +291,27 @@ module fair_arbiter_bank #(
         end
     end endgenerate
 
-    wire ov_sel_w = use_src | use_dst;
-    wire [NM-1:0] ov_match = use_src ? src_ov : dst_ov;
-    wire [NM-1:0] match_final = ov_sel_w ? ov_match : wfa_match;
+    // Keep the WFA data on the fast input of the output mux: the override
+    // selects are ready early, so the WFA result only pays one select.
+    wire ov_sel_w;
+    wire [NM-1:0] ov_match;
+    assign ov_sel_w = use_src | use_dst;
+    assign ov_match = use_src ? src_ov : dst_ov;
+    wire [NM-1:0] match_final;
+    assign match_final = ov_sel_w ? ov_match : wfa_match;
 
     localparam FUSE_VLD = ((N >= 10) || (M >= 10));
+
+    // Output-side vld fusion (P >= 10 design point): valid bits are selected
+    // per path after the path's own OR instead of after the full match mux.
+    // src_ov row i = src_any[i] & s_pick_i with s_pick_i one-hot, so its row
+    // OR is exactly src_any; same for dst_ov / dst_any.  Only the two
+    // cross-direction ORs need reduction trees, and wfa_core provides its
+    // vlds from the final free tokens (no post-wavefront OR).
+    //
+    // Under use_src the WFA necessarily grants the only requesting source, so
+    // wfa_src_vld already equals src_any; likewise under use_dst the WFA
+    // grants the only active destination.  That removes one mux level.
     generate
         if (FUSE_VLD) begin : gen_vld_fused
             wire [N-1:0] dst_ov_sv;
@@ -260,6 +335,7 @@ module fair_arbiter_bank #(
         end
     endgenerate
 
+    // outputs
     assign o_grant_rand_vld = match_final;
     generate
         if (!FUSE_VLD) begin : gen_vld_plain_src
@@ -291,5 +367,7 @@ module fair_arbiter_bank #(
             assign o_grant_dest_ptr[j][b] = |terms;
         end
     end endgenerate
+
 endmodule
+
 `default_nettype wire

@@ -20,19 +20,18 @@ parameters kept for the iSLIP reference and are ignored by the WFA.
 | A7 | 5x3, ITER=4 | N > M, odd small |
 | A8 | 3x5, ITER=4 | N < M, odd small |
 | A9 | 2x2, ITER=4 | minimal |
-| A10 | 16x16, ITER=1 | large (scalability) |
-| A11 | 8x8, PTR_RESET=0 | no-reset pointers |
-| A12 | 8x8, ITER=1 | single-iteration variant (area-optimal) |
-| A13 | 8x8, ITER=3 | three iterations |
-| A14 | 9x9, ITER=4 | $clog2 wrap just above 8 |
-| A15 | 9x11, ITER=4 | N<M, both non-power-of-two |
-| A16 | 8x9, ITER=4 | $clog2 transition 8 -> 9 |
-| A17 | 11x9, ITER=4 | N>M, both non-power-of-two |
-| A18 | 7x11, ITER=4 | odd x odd, N<M |
-| A19 | 15x15, ITER=1 | $clog2 transition 15 -> 16 |
-| A20 | **10x10, ITER=4** | **explicitly requested N=M=10 case** |
-| A21 | 10x10, ITER=4, AUGMENT=0 | no-swap variant; also runs S16 fairness |
-| A22 | 8x8, ITER=4, AUGMENT=0 | strict-iSLIP baseline; also runs S16 fairness |
+| A10 | 8x8, PTR_RESET=0 | no-reset bank select / pointers |
+| A11 | 8x8, ITER=1 | legacy ITER variant (ignored by WFA) |
+| A12 | 8x8, ITER=3 | legacy ITER variant (ignored by WFA) |
+| A13 | 9x9, ITER=4 | $clog2 wrap just above 8 |
+| A14 | 8x9, ITER=4 | $clog2 transition 8 -> 9 |
+| A15 | **10x10, ITER=4** | **explicitly requested N=M=10 case** |
+| A16 | 10x10, ITER=4, AUGMENT=0 | no-swap variant; also runs fairness |
+| A17 | 8x8, ITER=4, AUGMENT=0 | legacy baseline; also runs fairness |
+
+The regression scope is capped at 10x10.  Larger shapes were removed per the
+project decision; the RTL still parameterizes to them, but they are not part
+of the default signoff sweep.
 
 ### Dimension B: request pattern
 | ID | Scenario | Checks |
@@ -81,7 +80,7 @@ parameters kept for the iSLIP reference and are ignored by the WFA.
 | G1 | `scripts/verify_wfa.py` exhaustive small shapes | every request matrix of 2x2..3x4, every δ: no wasted pair |
 | G2 | `scripts/verify_wfa.py` all shapes 2..16 | random densities 5%..99%, 5 graphs x every δ |
 | G3 | `scripts/verify_wfa.py` all start offsets | maximality for every δ priority rotation |
-| G4 | `tb/tb_maximal.sv` 18 N/M shapes | ~780 cycles each: adversarial patterns + 7 random densities |
+| G4 | `tb/tb_maximal.sv` 11 N/M configurations (max 10x10) | ~780 cycles each: adversarial patterns + 7 random densities |
 | G5 | `tb/tb_maximal.sv` 10x10 ITER/AUGMENT variants | parameters ignored by WFA; maximality still holds |
 
 The iSLIP reference model is still checked by `scripts/verify_maximal.py`
@@ -91,32 +90,33 @@ The iSLIP reference model is still checked by `scripts/verify_maximal.py`
 ### Dimension H: long randomized soak (stability)
 | ID | Scenario | Checks |
 |----|----------|--------|
-| H1 | `tb/tb_soak.sv` 4 shapes x 1500 cyc (8x8, 9x11, 10x10 A0, 16x16) | rotating traffic modes + 10% random backpressure every cycle; maximality on effective requests |
+| H1 | `tb/tb_soak.sv` 3 configurations x 1500 cyc (8x8, 9x9, 10x10 A0) | rotating traffic modes + 10% random backpressure every cycle; maximality on effective requests |
 | H2 | `tb/tb_soak.sv` 10x10 default x 20000 cyc | long-run stability, no drift, X-free |
 
 ### Dimension I: strict single-source / single-destination fairness
 | ID | Scenario | Checks |
 |----|----------|--------|
-| I1 | `tb/tb_fairness.sv` / `tb/tb_fairness_fair.sv` single source -> many destinations | all/even/odd subsets, 7 shapes; granted destination sequence is ascending cyclic RR, ptr matches |
-| I2 | same TBs, many sources -> one destination | all/even/odd subsets, 7 shapes; granted source sequence is ascending cyclic RR, ptr matches |
+| I1 | `tb/tb_fairness.sv` / `tb/tb_fairness_fair.sv` single source -> many destinations | all/even/odd subsets, 4 shapes (max 10x10); granted destination sequence is ascending cyclic RR, ptr matches |
+| I2 | same TBs, many sources -> one destination | all/even/odd subsets, 4 shapes (max 10x10); granted source sequence is ascending cyclic RR, ptr matches |
 
-Both fast and fair RTL pass **42/42** strict checks.  The fair variant
-(`rtl/fair_arbiter_fair.v`) adds an iSLIP first pass before the WFA fill for
-better multi-source fairness.  The fast default adds the parallel single-side
-override on one wavefront core (`NSCHED=1`).  `NSCHED=4` is the optional
-fairness mode: four schedules, each a fixed coprime row permutation, and the
-selected schedule rotates every P grants.
+The default bank passes **24/24** strict checks (4 shapes); the fair variant
+also passes **24/24**.  The fair variant (`rtl/fair_arbiter_fair.v`) adds
+an iSLIP first pass before the WFA fill for better multi-source fairness.  The
+default bank adds the parallel single-side override to P fixed-delta WFA
+cores selected by a registered one-hot bank.  `NSCHED` is ignored by the bank
+top; the legacy rotating top (`rtl/reference/fair_arbiter_rot.v`) still
+supports NSCHED=1..4 and its four-schedule fairness mode.
 
 `tb/tb_jain.sv` measures multi-source fairness on the RTL (10x10, 3000-cycle
 persistent patterns, three seeds):
 
 | Scheme | src Jain | dst Jain |
 |--------|----------|----------|
-| **NSCHED=1 (default)** | **0.821-0.887** | **0.805-0.871** |
-| NSCHED=2 | 0.867-0.901 | 0.873-0.905 |
-| NSCHED=4 (fairness) | 0.914-0.933 | 0.895-0.934 |
+| **bank default** | **0.821-0.887** | **0.805-0.871** |
+| rotating NSCHED=2 (legacy) | 0.867-0.901 | 0.873-0.905 |
+| rotating NSCHED=4 (legacy) | 0.914-0.933 | 0.895-0.934 |
 
-The single-core default meets the 35-level limit and halves the area.  The
+The bank default meets the 35-level limit (30 generic levels).  The legacy
 4-schedule option beats the iSLIP-first fair variant (0.866-0.895 /
 0.912-0.934) on average, but costs 36 levels instead of 74, about 2x the cell
 area and 4x matcher switching.
@@ -154,14 +154,12 @@ is an error.  `tb_maximal.sv` also checks orthogonality and that
 
 ## 2. Results
 
-Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 22 configurations
-passed; total 295,830 checks, 0 errors (the count shifts slightly with the
-matching pattern).  Strict single-source/single-destination
-fairness (`tb_fairness.sv` and `tb_fairness_fair.sv`) passes **42/42 with 0
-errors** on both variants.  The fair-variant main regression is **295,848
-checks, 0 errors**.  The source/protocol checks are
-the same as before; S4-S7 now check cyclic coverage/count fairness rather than
-a strict ascending order, which is the documented WFA tradeoff.
+Simulator: Icarus Verilog 14.0 (`iverilog -g2012`). All 17 configurations
+passed; total 192,860 checks, 0 errors.  Strict single-source/single-destination
+fairness passes **24/24 with 0 errors** on the default bank and **24/24** on
+the fair variant (both 4 shapes, max 10x10).  The fair-variant main regression is
+**192,884 checks, 0 errors**.  S4-S7 check cyclic coverage/count fairness
+rather than a strict ascending order, which is the documented WFA tradeoff.
 
 | Config | Result | Checks |
 |--------|--------|--------|
@@ -178,22 +176,17 @@ a strict ascending order, which is the documented WFA tradeoff.
 | cfg_8x8_i1 | PASS | 13485 |
 | cfg_8x8_i3 | PASS | 13485 |
 | cfg_8x9 | PASS | 14898 |
-| cfg_7x11 | PASS | 15002 |
-| cfg_9x9 | PASS | 15883 |
-| cfg_9x11 | PASS | 17308 |
-| cfg_11x9 | PASS | 17143 |
+| cfg_9x9 | PASS | 15889 |
 | cfg_10x10 | PASS | 16853 |
-| cfg_15x15_i1 | PASS | 26533 |
-| cfg_16x16_i1 | PASS | 26957 |
 | cfg_10x10_noswap | PASS | 16901 |
 | cfg_8x8_noswap | PASS | 13522 |
-| **Total (22 configs)** | **ALL PASS** | **295797** |
-| Strict fairness, fast (7 shapes x 6 cases) | **42/42 PASS** | 0 errors |
-| Strict fairness, fair (7 shapes x 6 cases) | **42/42 PASS** | 0 errors |
-| Fair-variant main regression (22 configs) | **ALL PASS** | 295,848 |
-| Fair-variant maximality (18 shapes) | **18/18 PASS** | 0 non-max / 0 wasted |
-| Fair-variant soak (4 shapes x 1500) | **PASS** | 0 violations |
-| Fair-variant 10x10 x 20,000 soak | **PASS** | 146,021 grants, 0 violations |
+| **Total (17 configs)** | **ALL PASS** | **192860** |
+| Strict fairness, bank default (4 shapes x 6 cases) | **24/24 PASS** | 0 errors |
+| Strict fairness, fair (4 shapes x 6 cases) | **24/24 PASS** | 0 errors |
+| Fair-variant main regression (17 configs) | **ALL PASS** | 192,884 |
+| Fair-variant maximality (11 configurations) | **11/11 PASS** | 0 non-max / 0 wasted |
+| Fair-variant soak (3 configurations x 1500) | **PASS** | 0 violations |
+| Fair-variant 10x10 x 20,000 soak | **PASS** | 146,049 grants, 0 violations |
 
 Multi-source fairness model (`scripts/fairness_compare.py`, 10x10, 3000-cycle
 persistent patterns):
@@ -207,23 +200,23 @@ Full crossbar is 1.000 for both.  The fair variant is a better multi-source
 compromise, but not a strict all-traffic RR guarantee (fill-only ports are
 approximate).
 
-The added 8x9 / 9x9 / 9x11 / 11x9 / 7x11 / 15x15 configs exercise the
-`$clog2` width transitions just above/below power-of-two (8->9, 15->16) and
-the delta/pointer wrap at odd boundaries, which is where sizing bugs hide.
+The 8x9 / 9x9 configs exercise the `$clog2` width transition just above
+power-of-two (8->9) and the delta/pointer wrap at odd boundaries, which is
+where sizing bugs hide.
 
 ### Long-run results (G4, H1, H2)
 
 | Run | Scope | Cycles | Result |
 |-----|-------|--------|--------|
-| Maximality sweep (G4) | 18 N/M shapes, 7 random densities + 19 adversarial patterns | 773 each | 0 non-maximal, 0 wasted pairs, 0 orth, 0 cons |
-| 4-shape soak (H1) | 8x8 A1, 9x11 A1, 10x10 A0, 16x16 A1 | 1500 each | 0 non-max, 0 wasted, 0 orth/cons/impl/bp |
+| Maximality sweep (G4) | 11 N/M configurations, 7 random densities + 19 adversarial patterns | 773 each | 0 non-maximal, 0 wasted pairs, 0 orth, 0 cons |
+| 3-shape soak (H1) | 8x8 A1, 9x9 A1, 10x10 A0 | 1500 each | 0 non-max, 0 wasted, 0 orth/cons/impl/bp |
 | 10x10 soak (H2) | 10x10 ITER=4 AUGMENT=1 | 20000 | 0 non-max, 0 wasted, 0 orth/cons/impl/bp |
 
 The 20,000-cycle 10x10 soak covers 720,096 effective request instants and
-144,315 grants with 10% random source + destination backpressure re-drawn every
-cycle.  Grant rates under soak (which includes backpressure, so below the
-no-backpressure benchmark): 8x8 70.4%, 9x11 78.4%, 10x10 A0 73.2%, 16x16
-77.9%, 10x10 A1 72.2% of min(N,M).
+144,396 grants with 10% random source + destination backpressure re-drawn every
+cycle.  Grant rates under the 3-shape soak (which includes backpressure, so
+below the no-backpressure benchmark): 8x8 70.5%, 9x9 72.0%, 10x10 A0 73.2% of
+min(N,M).
 
 ### Matching quality (S17) - staggered reset
 
@@ -234,8 +227,6 @@ no-backpressure benchmark): 8x8 70.4%, 9x11 78.4%, 10x10 A0 73.2%, 16x16
 | 8x8 ITER=4 (default) | 8 of 8 | 0 |
 | 10x10 ITER=4 | 10 of 10 | 0 |
 | 10x10 ITER=4 AUGMENT=0 | 10 of 10 | 0 |
-| 16x16 ITER=1 | 16 of 16 | 0 |
-| 15x15 ITER=1 | 15 of 15 | 0 |
 
 The staggered pointer reset (g_ptr[j]=j, a_ptr[i]=i) makes the first cycle of
 full-crossbar traffic a maximal matching (no iSLIP desynchronization ramp-up).
@@ -243,7 +234,7 @@ ITER then only matters for random/bursty traffic throughput, not full-crossbar.
 
 Command:
 ```
-iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
+iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 ```
 
@@ -251,7 +242,7 @@ vvp sim/sim.vvp
 
 - The two round-robin directions are both exercised with *all* destinations /
   sources and with a *subset*, verifying skip + wrap behaviour.
-- Non-power-of-two sizes (6, 5, 3, 7, 9, 11, 15) exercise the `$clog2` width
+- Non-power-of-two sizes (6, 5, 3, 9, 10) exercise the `$clog2` width
   and pointer wrap logic, including just above/below power-of-two boundaries.
 - The no-reset configuration is verified by `$deposit`-ing the pointers to a
   known state after reset (simulating power-on), then running the same

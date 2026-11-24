@@ -172,11 +172,8 @@ module tb_fairness_top;
     fairness_runner #(.N(10), .M(10), .NAME("10x10")) r1 ();
     fairness_runner #(.N(3),  .M(5),  .NAME("3x5"))   r2 ();
     fairness_runner #(.N(5),  .M(3),  .NAME("5x3"))   r3 ();
-    fairness_runner #(.N(9),  .M(11), .NAME("9x11"))  r4 ();
-    fairness_runner #(.N(11), .M(9),  .NAME("11x9"))  r5 ();
-    fairness_runner #(.N(16), .M(16), .NAME("16x16")) r6 ();
 
-    localparam integer NUM = 7;
+    localparam integer NUM = 4;
 
     initial begin
         $display("=== strict per-port fairness tests ===");

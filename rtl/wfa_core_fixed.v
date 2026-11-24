@@ -1,10 +1,10 @@
 //=============================================================================
-// wfa_core_fixed.v - SPIKE: wavefront core with a CONSTANT diagonal offset.
+// wfa_core_fixed.v - wavefront core with a CONSTANT diagonal offset.
 //
 // Identical matching to wfa_core, but delta is the compile-time DELTA_VAL, so
 // the input/output "rotation" is pure wiring (0 logic levels) and there is no
-// delta register / barrel shifter.  Used by the replicate/bank spike to test
-// whether removing the runtime rotators reduces depth.  Throwaway reference.
+// delta register / barrel shifter.  This is the core used by the default
+// replicate/bank top (P instances, one per diagonal offset).
 //=============================================================================
 `default_nettype none
 module wfa_core_fixed #(

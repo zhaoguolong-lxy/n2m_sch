@@ -3,7 +3,8 @@
 // Runs a persistent request pattern for N_CYC cycles, counts grants per
 // (source,destination) pair, and prints the average Jain index of each
 // source's destination counts and each destination's source counts.
-// Compares NSCHED = 1 / 2 / 4 for three seeds.
+// The default bank top is single-schedule; the NSCHED parameter is kept for
+// source compatibility with the legacy rotating reference.
 
 `timescale 1ns/1ps
 
@@ -119,24 +120,13 @@ module jain_runner #(
 endmodule
 
 module tb_jain_top;
+    // Random persistent patterns.
     jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(3)) u0 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .SEED(3)) u1 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .SEED(3)) u2 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(5)) u3 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .SEED(5)) u4 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .SEED(5)) u5 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(7)) u6 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .SEED(7)) u7 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .SEED(7)) u8 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(5)) u1 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .SEED(7)) u2 ();
 
-    // saturated uniform traffic: K-regular circulant
+    // Saturated uniform traffic: K-regular circulant.
     jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(8)) r0 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(8)) r1 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(8)) r2 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(5)) r3 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(5)) r4 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(5)) r5 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(3)) r6 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(2), .MODE(1), .DEG(3)) r7 ();
-    jain_runner #(.N(10), .M(10), .NSCHED(4), .MODE(1), .DEG(3)) r8 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(5)) r1 ();
+    jain_runner #(.N(10), .M(10), .NSCHED(1), .MODE(1), .DEG(3)) r2 ();
 endmodule

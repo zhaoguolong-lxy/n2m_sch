@@ -1,13 +1,13 @@
 # 公平仲裁器（波前 / WFA 交叉开关调度器）
 
-参数化的 N 源 × M 目的公平仲裁器：每拍产生一个**正交（一对一）**匹配，**当拍出结果**（零延迟），支持源/目的反压。默认实现是 **WFA/WWFA + 单源/单目的严格 RR 覆盖**：
-- 一般混合流量 → WFA，保证极大（不浪费调度）、低深度；
+参数化的 N 源 × M 目的公平仲裁器：每拍产生一个**正交（一对一）**匹配，**当拍出结果**（零延迟），支持源/目的反压。默认实现是 **replicate/bank 波前（P 个固定 δ 的 WFA 核并行 + one-hot bank 选择）+ 单源/单目的严格 RR 覆盖**：
+- 一般混合流量 → bank WFA，保证极大（不浪费调度）、低深度；
 - 只有一个源有请求 → 每源 `a_ptr` RR 选择器覆盖，源的目的序列严格轮询；
 - 只有一个目的有请求 → 每目的 `g_ptr` RR 选择器覆盖，目的的源序列严格轮询。
 
-**硬保证：每拍都是极大匹配（maximal matching），对任意 N/M 都成立。** 只要某个请求 `(i,j)` 的源 i 和目的 j 都空闲却没有被调度，就是错误——本设计不允许这种情况。10x10、9x11、N<M、N>M、非 2 的幂全部覆盖。
+**硬保证：每拍都是极大匹配（maximal matching），对任意 N/M 都成立。** 只要某个请求 `(i,j)` 的源 i 和目的 j 都空闲却没有被调度，就是错误——本设计不允许这种情况。10x10、N<M、N>M、非 2 的幂全部覆盖；默认回归上限为 10x10。
 
-**验证汇总**：22 种配置 / 295,797 项检查全部通过；18 种 N/M 形状（2x2 ... 16x16，含 10x10）每种 773 拍，0 非极大拍、0 浪费对、0 正交违规；长跑随机 soak（4 种形状 × 1500 拍带随机反压，另加 10x10 × 20,000 拍 / 720,096 个请求瞬间）0 非极大拍、0 不变量违规；WFA 算法级脚本 94,475 例（小规模穷举 + 2..16 全形状 + 所有 δ）0 失败；严格单源/单目的公平测试 **42/42** 通过；复位 / X 态检查通过。
+**验证汇总**：17 种配置 / 192,860 项检查全部通过；11 种 N/M 配置（2x2 ... 10x10，含 3 个 10x10 变体）每种 773 拍，0 非极大拍、0 浪费对、0 正交违规；长跑随机 soak（3 种配置，最大 10x10，× 1500 拍带随机反压，另加 10x10 × 20,000 拍 / 720,096 个请求瞬间）0 非极大拍、0 不变量违规；WFA 算法级脚本 94,475 例（小规模穷举 + 2..16 全形状 + 所有 δ）0 失败；默认 bank 的严格单源/单目的公平测试 **24/24** 通过；复位 / X 态检查通过。
 
 [English](README.md) · [WFA 电路图](diagram/circuit/README.md) · [旧 iSLIP 方案图](diagram/fair_arbiter_scheme.svg)
 
@@ -16,7 +16,7 @@
 - **每拍极大匹配（无浪费调度）**：P 条 torus 对角线按波前顺序访问所有 crosspoint；cell 只在 `R & N & W` 时 grant，行/列 token 随后消耗。证明见下节。
 - **正交匹配**：同一对角线内一行一个、一列一个；跨对角线由 free token 保证，任何源/目的至多一次。
 - **当拍出结果**：cell 是纯组合逻辑，P 级波前完成后直接输出；唯一时序元件是 δ 旋转寄存器。
-- **低逻辑级数**：10x10 为 35 级（目标 ≤40），旧 iSLIP+串行 fill 为 300 级；8x8 为 28 级。
+- **低逻辑级数**：10x10 为 30 级（≤35），8x8 为 26 级；旧旋转 WFA 为 35 级，旧 iSLIP+串行 fill 为 300 级。
 - **旋转公平**：δ 每个 grant 后 +1；P 个周期覆盖所有对角线，每个源/目的都轮获得最高优先级。计数公平、无饥饿；严格 per-port RR 顺序做了一升一降的折中。
 - **反压 / 复位**：`i_src_bp` / `i_dest_bp` 组合门控；`rst_n` 异步复位；`PTR_RESET=0` 可省 δ 复位。
 - **参考实现**：`rtl/reference/fair_arbiter_islip.v` 保留严格双向 RR 的 iSLIP+fill 版本，用于对比。
@@ -25,7 +25,7 @@
 
 WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若请求 `(i,j)` 在结束时源 i 和目的 j 都空闲，由于 free 集合只减不增，轮到 `(i,j)` 时两端也一定空闲，cell 必然 grant，矛盾。因此不存在“出口空闲、入口却不调度”的请求对——输出对任意 N/M 都是**极大匹配**。
 
-这是极大，不是最大：某个源可能因为唯一请求的目的已被更早的对角线占用而落选，这是允许的。`scripts/verify_wfa.py` 对小规模穷举全部请求矩阵，并对 2..16 所有形状、所有 δ 做了 94,475 例检查，0 失败；`tb/tb_maximal.sv` 覆盖 18 种 N/M 形状，0 非极大、0 正交违规。
+这是极大，不是最大：某个源可能因为唯一请求的目的已被更早的对角线占用而落选，这是允许的。`scripts/verify_wfa.py` 对小规模穷举全部请求矩阵，并对 2..16 所有形状、所有 δ 做了 94,475 例检查，0 失败；`tb/tb_maximal.sv` 覆盖 11 种 N/M 形状（最大 10x10），0 非极大、0 正交违规。
 
 旧 iSLIP+**残余填充**参考实现用“按源串行独裁”达到同样的极大性（见 `rtl/reference/fair_arbiter_islip.v` 和 `docs/scheme.md`），保留用于严格 per-port RR 对比。
 
@@ -42,8 +42,8 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 - [单源/单目的严格 RR 覆盖](diagram/circuit/wfa_06_fairness.png)
 - [fair 变体：iSLIP 首轮 + WFA fill](diagram/circuit/wfa_07_fair_hybrid.png)
 
-索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。WFA RTL
-（`rtl/fair_arbiter.v`，默认 RTL）是 4 调度波前 + 单侧公平覆盖，10x10 综合为 **10711 cells / 35 级**（4 个波前和覆盖逻辑并行）；单调度版本（NSCHED=1）为 5274 cells / 35 级。纯 WFA 为 2062 cells / 35 级，旧 iSLIP+fill 为 11821 cells / 300 级。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（42/42）。8x8/10x10/9x11/11x9 均 ≤40（31/35/36/38），16x16 不在本变体目标内。
+索引与算法对比见 [diagram/circuit/README.md](diagram/circuit/README.md)。默认 RTL
+（`rtl/fair_arbiter.v`）是 **replicate/bank 波前 + 单侧公平覆盖**：P 个固定 δ 波前核并行，对角线旋转是综合期布线（0 级），一个寄存器 one-hot `delta_oh` 选择 bank。10x10 综合为 **12661 cells / 30 级**（8x8：6386 / 26）；SKY130HD 为 **7108 cells / 39794 um² / 3877 ps**（8x8：3424 / 20453 / 3634 ps）。旧旋转 WFA 为 5366 / 35（SKY130 5192 ps），旧 iSLIP+fill 为 11821 / 300。一般流量是极大匹配（不浪费调度）但不是最大匹配；单源/单目的序列是严格 RR（24/24）。
 
 ## fast / fair 两个版本
 
@@ -51,25 +51,27 @@ WFA 按 torus 对角线顺序访问每个 crosspoint 恰好一次。反证：若
 
 | 版本 | RTL | 单源/单目的严格 RR | 多源公平 | 10x10 PPA |
 |------|-----|--------------------|----------|-----------|
-| **fast（默认）** | `rtl/fair_arbiter.v` | **42/42** | 4 调度 WFA（Jain 0.89-0.93 src / 0.92-0.95 dst） | **10711 cells / 35 级** |
-| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **42/42** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 5119 cells / 74 级 |
+| **fast（默认，bank）** | `rtl/fair_arbiter.v` | **24/24** | bank WFA（Jain 0.821-0.887 src / 0.805-0.871 dst） | **12661 cells / 30 级；SKY130 7108 / 39794um² / 3877ps** |
+| 旧旋转 WFA，4 调度 | `rtl/reference/fair_arbiter_rot.v` `NSCHED=4` | **42/42（历史）** | 4 调度 WFA（Jain 0.914-0.933 src / 0.895-0.934 dst） | 11255 cells / 36 级 |
+| **fair（可选）** | `rtl/fair_arbiter_fair.v` | **24/24** | iSLIP 首轮 + WFA fill（Jain 0.87-0.90 src / 0.91-0.93 dst） | 5119 cells / 74 级 |
 | 严格参考 | `rtl/reference/fair_arbiter_islip.v` | 全流量严格 | iSLIP+串行 fill | 11821 / 300 |
 
-### 多调度公平（面积换公平）
+### 多调度公平（旧旋转参考）
 
-`rtl/fair_arbiter.v` 并行跑 `NSCHED` 个波前。第 s 个调度把 core 的行按
-`r -> (c_s*r) mod N` 置换（`c_s` 与 N 互质，纯布线，无 mux），输出每 P 个授予
-切换一次调度：
+默认 bank 是单调度。旧旋转参考 `rtl/reference/fair_arbiter_rot.v` 仍支持并行
+`NSCHED` 个波前。第 s 个调度把 core 的行按 `r -> (c_s*r) mod N` 置换
+（`c_s` 与 N 互质，纯布线，无 mux），输出每 P 个授予切换一次调度：
 
 | 方案 | src Jain（10x10） | dst Jain（10x10） | 10x10 cells / 级数 |
 |------|-------------------|-------------------|--------------------|
-| NSCHED=1 | 0.819-0.834 | 0.804-0.891 | 5274 / 35 |
-| NSCHED=2 | 0.851-0.876 | 0.873-0.905 | 7155 / 36 |
-| **NSCHED=4（默认）** | **0.890-0.929** | **0.918-0.952** | 10711 / 35 |
+| **bank（默认）** | **0.821-0.887** | **0.805-0.871** | **12661 / 30** |
+| 旧旋转 NSCHED=2 | 0.867-0.901 | 0.873-0.905 | 7395 / 35 |
+| 旧旋转 NSCHED=4 | 0.914-0.933 | 0.895-0.934 | 11255 / 36 |
 | fair 变体 | 0.866-0.895 | 0.912-0.934 | 5119 / 74 |
 
-RTL 检查 `tb/tb_jain.sv` 实测 NSCHED=4 为 0.914-0.933 src / 0.895-0.934 dst。
-`NSCHED` 是参数：NSCHED=1 回到最小面积，NSCHED=2 是中间点。
+默认 bank 的 RTL 检查 `tb/tb_jain.sv` 实测 0.821-0.887 src / 0.805-0.871 dst
+（三个持续模式），K-regular 为 1.000。`NSCHED` 参数只为旧旋转参考保留，默认
+bank 顶层忽略它。
 
 ### 共享队列排空
 
@@ -78,8 +80,9 @@ RTL 检查 `tb/tb_jain.sv` 实测 NSCHED=4 为 0.914-0.933 src / 0.895-0.934 dst
 极大匹配不浪费周期；只追求最大基数的参考反而更差（410 拍，饿死部分源）。
 详见 `docs/perf.md`。
 
-fair 版验证：主回归 295,848 checks PASS；极大性 18/18；4 形状 soak × 1500
-PASS；10x10 × 20,000 soak PASS（146,021 grants，0 违规）；严格公平 42/42。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
+fair 版验证：主回归 192,884 checks PASS；极大性 11/11；3 形状 soak × 1500
+PASS；10x10 × 20,000 soak PASS（146,049 grants，0 违规）；严格公平 24/24
+（4 形状）。fair 版多源 Jain 平均（10x10 模型，3000 拍持续矩阵）：纯 WFA src
 0.819-0.834 / dst 0.804-0.891；fair src 0.866-0.895 / dst 0.912-0.934。
 全交叉开关两者都是 1.000。fair 版不是“全流量严格 RR”的数学保证
 （fill-only 端口是近似），但它是当前单拍下最好的折中。
@@ -97,15 +100,17 @@ vvp sim/fairness_fair.vvp
 ## 文件结构
 
 ```
-rtl/fair_arbiter.v          顶层 WFA wrapper（原始接口不变；N、M、PTR_RESET）
-rtl/wfa_core.v              内部 P 级波前核心（内部扁平接口）
+rtl/fair_arbiter.v          默认 bank 顶层（原始接口不变；N、M、PTR_RESET）
+rtl/wfa_core_fixed.v        固定 δ 的 P 级波前核（bank 使用）
+rtl/wfa_core.v              旋转 δ 的 P 级波前核（旧参考）
+rtl/reference/fair_arbiter_rot.v  旧旋转多调度顶层（NSCHED=1..4）
 rtl/fair_arbiter_fair.v    可选 fair 版（iSLIP 首轮 + WFA fill）
 rtl/reference/fair_arbiter_islip.v  严格 RR 的 iSLIP+fill 参考实现
 rtl/reference/fair_arbiter_dpa.v    单遍 DPA（21 级，非极大）
-tb/tb_fair_arbiter.sv       主回归（17 场景 × 22 配置，含 10x10）
-tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（18 种 N/M）
+tb/tb_fair_arbiter.sv       主回归（17 场景 × 17 配置，最大 10x10）
+tb/tb_maximal.sv            极大性 / 正交性 / 输出一致性检查（11 种 N/M）
 tb/tb_soak.sv               长跑随机 soak（数千拍 + 随机反压，含 10x10 两万拍）
-tb/tb_jain.sv               RTL 上测多源 Jain（NSCHED 1/2/4）
+tb/tb_jain.sv               RTL 上测默认 bank 的多源 Jain
 tb/tb_fairness.sv           严格公平测试（fast 版）
 tb/tb_fairness_fair.sv      严格公平测试（fair 版）
 tb/tb_perf.sv               吞吐基准
@@ -131,32 +136,32 @@ sim/run_all.sh              全套验证（主回归 + 极大性 + X 检查 + �
 需 Icarus Verilog（`iverilog`）。Windows 下用 oss-cad-suite 时，先把 `bin` 和 `lib` 加入 PATH：
 
 ```bash
-iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
+iverilog -g2012 -Wall -s tb_top -o sim/sim.vvp rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_fair_arbiter.sv
 vvp sim/sim.vvp
 ```
 
 预期输出 `RESULT: ALL CONFIGURATIONS PASSED`。
 
-极大性检查（18 种 N/M，含 10x10，长随机 + 对抗模式）：
+极大性检查（11 种 N/M，最大 10x10，长随机 + 对抗模式）：
 
 ```bash
-iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_maximal.sv
+iverilog -g2012 -s tb_maximal_top -o sim/maximal.vvp rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_maximal.sv
 vvp sim/maximal.vvp
 ```
 
-长跑随机 soak（4 种形状 × 1500 拍带随机反压，另加 10x10 × 20000 拍）：
+长跑随机 soak（3 种形状，最大 10x10，× 1500 拍带随机反压，另加 10x10 × 20000 拍）：
 
 ```bash
-iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
-iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak_top   -o sim/soak.vvp   rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_soak.sv
+iverilog -g2012 -s tb_soak10_top -o sim/soak10.vvp rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_soak.sv
 vvp sim/soak.vvp
 vvp sim/soak10.vvp
 ```
 
-严格公平测试（单源多目的 / 单目的多源，all/even/odd，7 种形状）：
+严格公平测试（单源多目的 / 单目的多源，all/even/odd，4 种形状，最大 10x10）：
 
 ```bash
-iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core.v rtl/fair_arbiter.v tb/tb_fairness.sv
+iverilog -g2012 -s tb_fairness_top -o sim/fairness.vvp     rtl/wfa_core_fixed.v rtl/fair_arbiter.v tb/tb_fairness.sv
 vvp sim/fairness.vvp
 ```
 
@@ -175,8 +180,9 @@ python scripts/verify_wfa.py
 ## 综合（PPA）
 
 ```bash
-bash synth/run_synth.sh      # fast：逐形状面积/深度
-bash synth/run_synth.sh fair # 可选 fair 变体
+bash synth/run_synth.sh        # 默认 bank：逐形状面积/深度
+bash synth/run_synth.sh fair   # 可选 fair 变体
+bash synth/run_synth.sh sky130 # SKY130HD 单元级/ABC 延迟
 ```
 
 ## 参数
@@ -185,11 +191,15 @@ bash synth/run_synth.sh fair # 可选 fair 变体
 |------|------|------|
 | N | 源数量（≥ 2） | 8 |
 | M | 目的数量（≥ 2） | 8 |
-| PTR_RESET | 0=δ 无复位（省面积），1=异步复位 | 1 |
-| ITER | 旧参数，WFA 忽略（保留 TB 兼容） | 4 |
-| AUGMENT | 旧参数，WFA 忽略 | 1 |
+| PTR_RESET | 0=bank δ 无复位（省面积），1=异步复位 | 1 |
+| NSCHED | 兼容旧参数；默认 bank 顶层忽略 | 1 |
+| WAVEFRONT_PLUS | 1=寄存器 presence 跳空；0=δ+1 | 1 |
+| AOI_STYLE | 1=AOI21 形式 token 更新；0=AND/NAND | 1 |
+| SEL_OH | 1=寄存器 one-hot bank 选择；0=二进制选择 | 1 |
+| ITER | 旧参数，bank/WFA 忽略 | 4 |
+| AUGMENT | 旧参数，bank/WFA 忽略 | 1 |
 
-WFA 随机流量匹配规模：8x8 86%、10x10 89%、16x16 92%，N≠M 时 96-100%。这低于旧 iSLIP+augment 的 97-98%，因为 WFA 是极大而非最大匹配——这是换深度的明确取舍。旧参考实现的 `ITER`/`AUGMENT` 行为见 `docs/ppa.md`。
+WFA 随机流量匹配规模：8x8 86%、10x10 89%，N≠M 时 96-100%。这低于旧 iSLIP+augment 的 97-98%，因为 WFA 是极大而非最大匹配——这是换深度的明确取舍。旧参考实现的 `ITER`/`AUGMENT` 行为见 `docs/ppa.md`。
 
 ## 接口
 

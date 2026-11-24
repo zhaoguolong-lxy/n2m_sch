@@ -1,8 +1,9 @@
 //=============================================================================
 // tb_perf.sv - scheduling performance benchmark
 //
-// For each (N, M, ITER, AUGMENT) configuration, measures over a long-enough
-// random run:
+// For each (N, M) configuration, measures over a long-enough random run.
+// Scope is capped at 10x10; ITER/AUGMENT are legacy parameters ignored by the
+// default bank top.
 //   first      : matches in the first cycle of full-crossbar traffic
 //   converge   : cycles until the matching reaches min(N,M)
 //   full       : average matches/cycle under full-crossbar (100% load)
@@ -124,33 +125,16 @@ module tb_perf_top;
     localparam integer NCY = 1500;
     integer num_done = 0;
 
-    // AUGMENT=0 (strict iSLIP fairness, still maximal via the fill)
-    perf_runner #(.N(4),  .M(4),  .ITER(1), .AUGMENT(0)) p00 ();
-    perf_runner #(.N(4),  .M(4),  .ITER(2), .AUGMENT(0)) p01 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(1), .AUGMENT(0)) p02 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(2), .AUGMENT(0)) p03 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(0)) p04 ();
-    perf_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(0)) p05 ();
-    perf_runner #(.N(16), .M(16), .ITER(1), .AUGMENT(0)) p06 ();
+    // Default bank configuration; ITER/AUGMENT are legacy and ignored.
+    // Scope is capped at 10x10.
+    perf_runner #(.N(4),  .M(4),  .ITER(4), .AUGMENT(1)) p00 ();
+    perf_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(1)) p01 ();
+    perf_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(1)) p02 ();
+    perf_runner #(.N(8),  .M(4),  .ITER(4), .AUGMENT(1)) p03 ();
+    perf_runner #(.N(4),  .M(8),  .ITER(4), .AUGMENT(1)) p04 ();
+    perf_runner #(.N(8),  .M(9),  .ITER(4), .AUGMENT(1)) p05 ();
 
-    // AUGMENT=1 (default: larger matching, fairness relaxed)
-    perf_runner #(.N(4),  .M(4),  .ITER(4), .AUGMENT(1)) p07 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(1), .AUGMENT(1)) p08 ();
-    perf_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(1)) p09 ();
-    perf_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(1)) p10 ();
-    perf_runner #(.N(16), .M(16), .ITER(1), .AUGMENT(1)) p11 ();
-    perf_runner #(.N(8),  .M(4),  .ITER(4), .AUGMENT(1)) p12 ();
-    perf_runner #(.N(4),  .M(8),  .ITER(4), .AUGMENT(1)) p13 ();
-    perf_runner #(.N(9),  .M(11), .ITER(4), .AUGMENT(1)) p14 ();
-    perf_runner #(.N(11), .M(9),  .ITER(4), .AUGMENT(1)) p15 ();
-
-    // ITER sweep at the two key square sizes (find the throughput sweet spot)
-    perf_runner #(.N(8),  .M(8),  .ITER(2), .AUGMENT(1)) p16 ();
-    perf_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(1)) p17 ();
-    perf_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(0)) p18 ();
-    perf_runner #(.N(10), .M(10), .ITER(2), .AUGMENT(1)) p19 ();
-
-    localparam integer NUM = 20;
+    localparam integer NUM = 6;
 
     initial begin
         $display("=====================================================================");

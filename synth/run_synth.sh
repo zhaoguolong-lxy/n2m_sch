@@ -2,7 +2,10 @@
 # Synthesize the arbiter and print PPA statistics.
 # Requires oss-cad-suite bin/lib on PATH (DLLs).
 #
-# Usage: bash synth/run_synth.sh [fast|fair]
+# Usage: bash synth/run_synth.sh [fast|fair|sky130]
+#   fast   - default replicate/bank top, generic yosys mapping
+#   fair   - iSLIP first pass + WFA fill variant, generic mapping
+#   sky130 - default bank top, SKY130HD cell mapping + ABC timing
 #
 # Each shape runs in a fresh yosys process.  yosys' internal auto-index
 # counter keeps growing across `design -reset`, which perturbs ABC's mapping
@@ -17,7 +20,7 @@ MODE="${1:-fast}"
 case "$MODE" in
     fast)
         MODULE=fair_arbiter
-        SRC="rtl/wfa_core.v rtl/fair_arbiter.v"
+        SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
         ;;
     fair)
         MODULE=fair_arbiter_fair
@@ -25,23 +28,15 @@ case "$MODE" in
         ;;
     sky130)
         MODULE=fair_arbiter
-        SRC="rtl/wfa_core.v rtl/fair_arbiter.v"
-        ;;
-    bank)
-        MODULE=fair_arbiter_bank
-        SRC="rtl/reference/wfa_core_fixed.v rtl/reference/fair_arbiter_bank.v"
-        ;;
-    bank130)
-        MODULE=fair_arbiter_bank
-        SRC="rtl/reference/wfa_core_fixed.v rtl/reference/fair_arbiter_bank.v"
+        SRC="rtl/wfa_core_fixed.v rtl/fair_arbiter.v"
         ;;
     *)
-        echo "usage: $0 [fast|fair|sky130|bank|bank130]" >&2
+        echo "usage: $0 [fast|fair|sky130]" >&2
         exit 2
         ;;
 esac
 
-if [ "$MODE" = "sky130" ] || [ "$MODE" = "bank130" ]; then
+if [ "$MODE" = "sky130" ]; then
     LIB="${SKY130_LIB:-D:/opencode/rtl_gen/pdk/sky130hd/sky130_fd_sc_hd__tt_025C_1v80.lib}"
     if [ ! -f "$LIB" ]; then
         echo "SKY130 Liberty not found: $LIB" >&2
@@ -50,7 +45,7 @@ if [ "$MODE" = "sky130" ] || [ "$MODE" = "bank130" ]; then
     fi
     CONSTR="$(cygpath -w "$ROOT/synth/sky130.constr" 2>/dev/null \
               || echo "$ROOT/synth/sky130.constr")"
-    for shape in ${SKY130_SHAPES:-8x8 10x10 9x11 11x9}; do
+    for shape in ${SKY130_SHAPES:-8x8 10x10}; do
         n="${shape%x*}"
         m="${shape#*x}"
         echo "=== $MODE $shape ==="
@@ -64,7 +59,7 @@ if [ "$MODE" = "sky130" ] || [ "$MODE" = "bank130" ]; then
     exit 0
 fi
 
-for shape in 8x8 10x10 9x11 11x9 16x16; do
+for shape in ${GEN_SHAPES:-8x8 10x10}; do
     n="${shape%x*}"
     m="${shape#*x}"
     echo "=== $MODE $shape ==="

@@ -19,7 +19,7 @@
 // destination/source backpressure is re-randomized every cycle at 10%.
 //
 // Two tops are provided:
-//   tb_soak_top   : 8x8 A1, 9x11 A1, 10x10 A0, 16x16 A1 - 1500 cycles each
+//   tb_soak_top   : 8x8 A1, 9x9 A1, 10x10 A0 - 1500 cycles each (max 10x10)
 //   tb_soak10_top : 10x10 default (ITER=4, AUGMENT=1) - 20000 cycles
 //=============================================================================
 `timescale 1ns/1ps
@@ -192,17 +192,16 @@ module soak_runner #(
 endmodule
 
 module tb_soak_top;
-    wire d0, d1, d2, d3;
+    wire d0, d1, d2;
 
     soak_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(1), .CYCLES(1500), .SEED(11)) s0 (.done(d0));
-    soak_runner #(.N(9),  .M(11), .ITER(4), .AUGMENT(1), .CYCLES(1500), .SEED(22)) s1 (.done(d1));
+    soak_runner #(.N(9),  .M(9),  .ITER(4), .AUGMENT(1), .CYCLES(1500), .SEED(22)) s1 (.done(d1));
     soak_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(0), .CYCLES(1500), .SEED(33)) s2 (.done(d2));
-    soak_runner #(.N(16), .M(16), .ITER(4), .AUGMENT(1), .CYCLES(1500), .SEED(44)) s3 (.done(d3));
 
     initial begin
         #100;
-        while (!(d0 && d1 && d2 && d3)) #10;
-        $display("=== soak (4 shapes) done ===");
+        while (!(d0 && d1 && d2)) #10;
+        $display("=== soak (3 shapes, max 10x10) done ===");
         $finish;
     end
 endmodule

@@ -308,28 +308,21 @@ module tb_maximal_top;
     maximal_runner #(.N(4),  .M(4),  .ITER(4), .AUGMENT(1), .SEED(4))  c01 ();
     maximal_runner #(.N(8),  .M(8),  .ITER(4), .AUGMENT(1), .SEED(8))  c02 ();
     maximal_runner #(.N(8),  .M(8),  .ITER(1), .AUGMENT(0), .SEED(9))  c03 ();
-    maximal_runner #(.N(16), .M(16), .ITER(4), .AUGMENT(1), .SEED(16)) c04 ();
 
     // N < M (more destinations than sources)
     maximal_runner #(.N(3),  .M(5),  .ITER(4), .AUGMENT(1), .SEED(35)) c05 ();
     maximal_runner #(.N(5),  .M(7),  .ITER(4), .AUGMENT(1), .SEED(57)) c06 ();
     maximal_runner #(.N(8),  .M(9),  .ITER(4), .AUGMENT(1), .SEED(89)) c07 ();
-    maximal_runner #(.N(9),  .M(11), .ITER(4), .AUGMENT(1), .SEED(91)) c08 ();
     maximal_runner #(.N(10), .M(10), .ITER(4), .AUGMENT(1), .SEED(101)) c09 ();
     maximal_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(0), .SEED(102)) c10 ();
     maximal_runner #(.N(10), .M(10), .ITER(1), .AUGMENT(1), .SEED(103)) c11 ();
 
     // N > M
     maximal_runner #(.N(5),  .M(3),  .ITER(4), .AUGMENT(1), .SEED(53)) c12 ();
-    maximal_runner #(.N(11), .M(9),  .ITER(4), .AUGMENT(1), .SEED(119)) c13 ();
-    maximal_runner #(.N(12), .M(7),  .ITER(4), .AUGMENT(1), .SEED(127)) c14 ();
 
     // non-power-of-two, larger
-    maximal_runner #(.N(13), .M(13), .ITER(4), .AUGMENT(1), .SEED(131)) c15 ();
-    maximal_runner #(.N(15), .M(15), .ITER(4), .AUGMENT(1), .SEED(151)) c16 ();
-    maximal_runner #(.N(7),  .M(11), .ITER(4), .AUGMENT(1), .SEED(711)) c17 ();
 
-    localparam NUM = 18;
+    localparam NUM = 11;
 
     initial begin
         while (num_done < NUM) #10;

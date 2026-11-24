@@ -26,26 +26,34 @@ case "$MODE" in
     sky130)
         MODULE=fair_arbiter
         SRC="rtl/wfa_core.v rtl/fair_arbiter.v"
-        LIB="${SKY130_LIB:-D:/opencode/rtl_gen/pdk/sky130hd/sky130_fd_sc_hd__tt_025C_1v80.lib}"
-        if [ ! -f "$LIB" ]; then
-            echo "SKY130 Liberty not found: $LIB" >&2
-            echo "Set SKY130_LIB to the .lib path (Windows path, e.g. D:/...)." >&2
-            exit 2
-        fi
-        CONSTR="$(cygpath -w "$ROOT/synth/sky130.constr" 2>/dev/null \
-                  || echo "$ROOT/synth/sky130.constr")"
+        ;;
+    bank)
+        MODULE=fair_arbiter_bank
+        SRC="rtl/reference/wfa_core_fixed.v rtl/reference/fair_arbiter_bank.v"
+        ;;
+    bank130)
+        MODULE=fair_arbiter_bank
+        SRC="rtl/reference/wfa_core_fixed.v rtl/reference/fair_arbiter_bank.v"
         ;;
     *)
-        echo "usage: $0 [fast|fair|sky130]" >&2
+        echo "usage: $0 [fast|fair|sky130|bank|bank130]" >&2
         exit 2
         ;;
 esac
 
-if [ "$MODE" = "sky130" ]; then
+if [ "$MODE" = "sky130" ] || [ "$MODE" = "bank130" ]; then
+    LIB="${SKY130_LIB:-D:/opencode/rtl_gen/pdk/sky130hd/sky130_fd_sc_hd__tt_025C_1v80.lib}"
+    if [ ! -f "$LIB" ]; then
+        echo "SKY130 Liberty not found: $LIB" >&2
+        echo "Set SKY130_LIB to the .lib path (Windows path, e.g. D:/...)." >&2
+        exit 2
+    fi
+    CONSTR="$(cygpath -w "$ROOT/synth/sky130.constr" 2>/dev/null \
+              || echo "$ROOT/synth/sky130.constr")"
     for shape in ${SKY130_SHAPES:-8x8 10x10 9x11 11x9}; do
         n="${shape%x*}"
         m="${shape#*x}"
-        echo "=== sky130 $shape ==="
+        echo "=== $MODE $shape ==="
         log="$(mktemp)"
         yosys -p "read_verilog -sv $SRC; chparam -set N $n -set M $m $MODULE; synth -top $MODULE; flatten; dfflibmap -liberty $LIB; abc -liberty $LIB -constr $CONSTR; opt_clean; stat" > "$log" 2>&1
         grep -E "^ +[0-9]+ +cells$" "$log" | tail -1 | sed 's/^/cells:/'

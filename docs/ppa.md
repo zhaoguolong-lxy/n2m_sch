@@ -481,6 +481,48 @@ it requires wrap-around (STA loop risk), replication/unrolling (area), or
 accepting the deeper `2P-1` classic WFA.  The prototype is kept as a
 negative-result reference; it is not integrated into `fair_arbiter`.
 
+### Replicate/bank arbiter (positive result — depth-first alternative)
+
+`rtl/reference/fair_arbiter_bank.v` (+ `wfa_core_fixed.v`) is a complete,
+verified alternative with the same top-level interface.  Instead of one core
+with a runtime barrel rotator, it instantiates **P fixed-delta cores** (the
+input/output rotation is compile-time wiring, 0 levels) and selects one with
+a rotating `delta` register through a P:1 mux.  The 8-level input+output
+rotation collapses to a single ~4-level select mux.  Wavefront+ delta-skip is
+applied to the bank select (registered, off the critical path), so fairness
+matches the single-core rotating default.
+
+Verified: strict RR **42/42**, maximality **18/18 shapes (0 non-max)**,
+K-regular Jain **1.000**, random 10x10 src 0.823 (same as NS1 rotating).
+
+| Shape | rotating NS1 generic | bank generic | rotating SKY130 | bank SKY130 |
+|-------|----------------------|--------------|-----------------|-------------|
+| 8x8   | 3286 / 29 | 6681 / **27** | 2341c / 15149um2 / 4421ps | 3539c / 21049um2 / **3954ps** |
+| 10x10 | 5366 / 35 | 12875 / **31** | 4586c / 31237um2 / 5192ps | 7610c / 42885um2 / **4006ps** |
+| 9x11  | 5347 / 35 | 13084 / **34** | - | 7757c / 45995um2 / 3788ps |
+| 11x9  | 5402 / 35 | 13317 / 36 | - | 7702c / 44743um2 / 4041ps |
+
+Takeaways:
+
+- **10x10 generic depth 35 -> 31** (4 levels of margin under the 35 limit);
+  SKY130 delay **5192 -> 4006 ps (-23%)**.  8x8: 29 -> 27, -11% delay.
+- Cost is **~1.4-1.5x area** (ABC shares logic across the P cores, so it is
+  far below the naive P-times blowup).  Depth-first, this is a good trade.
+- The earlier "bank is generic-neutral (35 vs 35)" dismissal was measured on
+  the OLD 2-gate wavefront without the AOI form / output fusion; with AOI21
+  and the full top the bank clearly wins.  Generic hides the AOI benefit.
+- 11x9 generic is 36 (no-AOI proxy); with the real AOI library it is well
+  under 35 like the other shapes.
+
+Reproduce: `bash synth/run_synth.sh bank` (generic) and
+`SKY130_SHAPES=10x10 bash synth/run_synth.sh bank130` (cell-level).
+
+The remaining depth is the P-stage wavefront itself (20 generic / 10 AOI).
+Cutting that further needs a parallel-prefix / carry-lookahead reformulation
+of the coupled row/col token ripple; the 2D mutual dependency has no small
+associative prefix operator, so that path is high-risk and was not pursued.
+The bank is the practical depth win.
+
 Net: the default single-schedule fast wrapper is 5366 cells / 35 levels at
 10x10; the optional four-schedule mode is 11255 / 36; the fair variant is
 5119 / 74.  The request-mask network is still built once in the wrapper

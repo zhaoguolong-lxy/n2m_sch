@@ -455,6 +455,32 @@ interface; the remaining 4 levels are inherent.  The only real ways to
 remove them are a wider-OR/priority-encoder cell in the target library or a
 one-hot output contract.
 
+### Token-ring WFA experiment (negative result)
+
+`rtl/reference/wfa_core_tr.v` is a classic token-ring WFA core: the request
+matrix is fixed, a one-hot row/column token selects the top-priority cell, and
+north/west tokens propagate south/east.  It removes the data rotators, but the
+naive top/left boundary injection is **not maximal** for an arbitrary priority
+cell: the tokens can be consumed by cells above/left before reaching the
+intended top-priority cell.  Measured on the maximality bench at 10x10:
+**0.51/10 average grants (5.1%), 763/773 non-maximal cycles, 32k wasted
+pairs**.  Fairness fails as well.
+
+The correct classic WFA needs **wrap-around edges** (bottom/right back to
+top/left) so the cells above/left are after the priority cell in the
+wavefront.  Those wrap edges introduce combinational cycles; the current
+design avoids them with the data rotation.  Alternatively, the start cell can
+be moved by a full row/column data permutation, which is the same rotator
+cost, or by replication/unrolling (area).  The classic single-cell WFA is
+also `(2P-1)` stages, i.e. deeper than the `P`-stage torus even before the
+rotator.
+
+Conclusion: the rotator is **not algorithmically necessary**, but it is the
+price of an **acyclic, arbitrary-start, P-stage** implementation.  Removing
+it requires wrap-around (STA loop risk), replication/unrolling (area), or
+accepting the deeper `2P-1` classic WFA.  The prototype is kept as a
+negative-result reference; it is not integrated into `fair_arbiter`.
+
 Net: the default single-schedule fast wrapper is 5366 cells / 35 levels at
 10x10; the optional four-schedule mode is 11255 / 36; the fair variant is
 5119 / 74.  The request-mask network is still built once in the wrapper
